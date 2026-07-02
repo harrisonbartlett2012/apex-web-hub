@@ -7,8 +7,7 @@ from apex_engine import ApexEngine
 # Initialize Flask and WebSockets
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'apex_super_secret_key_2026'
-socketio = SocketIO(app, async_mode='geventt', cors_allowed_origins="*")
-
+socketio = SocketIO(app, async_mode='threading', cors_allowed_origins="*")
 # Boot the APEX Engine
 logging.info("Booting APEX Core...")
 engine = ApexEngine()
