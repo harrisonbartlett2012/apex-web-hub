@@ -6,6 +6,5 @@ pandas
 yfinance
 ddgs
 gunicorn
-gevent
-gevent-websocket
+simple-websocket
 fpdf
