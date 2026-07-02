@@ -8,3 +8,4 @@ ddgs
 gunicorn
 gevent
 gevent-websocket
+fpdf
