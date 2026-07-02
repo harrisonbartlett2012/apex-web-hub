@@ -1,0 +1,8 @@
+{
+    "gemini_api_key": "Paste_Key_Here",
+    "theme": "Dark",
+    "auto_scout_interval": 4,
+    "ollama_host": "http://localhost:11434",
+    "default_model": "qwen2:0.5b",
+    "max_session_calls": 50
+}

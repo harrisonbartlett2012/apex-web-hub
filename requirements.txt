@@ -1,0 +1,8 @@
+Flask
+Flask-SocketIO
+python-engineio
+python-socketio
+eventlet
+pandas
+yfinance
+ddgs
