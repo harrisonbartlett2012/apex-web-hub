@@ -34,7 +34,7 @@ class ApexEngine:
         # Pulls the API key securely from Render Environment Variables
         self.api_key = os.environ.get("GEMINI_API_KEY", self.config.get("gemini_api_key", ""))
         genai.configure(api_key=self.api_key)
-        self.current_model = "gemini-2.5-flash"
+        self.current_model = "gemini-1.5-flash-8b"
 
         self.max_session_calls = self.config.get("max_session_calls", 50)
         self.current_session_calls = 0
