@@ -11,6 +11,8 @@ import re
 import time
 import threading
 from datetime import datetime
+import requests
+from bs4 import BeautifulSoup
 import apex_database
 # Web Scraper Library
 try:
