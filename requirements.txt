@@ -8,3 +8,4 @@ ddgs
 gunicorn
 simple-websocket
 fpdf
+google-generativeai
