@@ -12,17 +12,17 @@
     <header class="flex justify-between items-center border-b border-teal-500/30 pb-4 mb-4">
         <div class="flex items-center gap-2">
             <div class="w-3 h-3 bg-teal-500 rounded-full animate-pulse"></div>
-            <h1 class="text-xl font-bold tracking-widest text-teal-300">APEX // WEB_HUB <span class="text-xs text-gray-500 ml-2">LITE</span></h1>
+            <h1 class="text-xl font-bold tracking-widest text-teal-300">APEX // WEB_HUB</h1>
         </div>
         <div id="status-badge" class="px-3 py-1 bg-gray-800 border border-teal-500/50 rounded text-xs transition-colors duration-300">
             CONNECTING...
         </div>
     </header>
 
-    <main id="chat-window" class="flex-1 bg-gray-800/50 border border-gray-700 rounded-lg p-4 overflow-y-auto mb-4 space-y-4 shadow-inner"></main>
+    <main id="chat-window" class="flex-1 bg-gray-800/50 border border-gray-700 rounded-lg p-4 overflow-y-auto mb-4 space-y-4 shadow-inner scroll-smooth"></main>
 
     <footer class="flex gap-2">
-        <input type="text" id="cmd-input" placeholder="Enter query or ticker symbol..." class="flex-1 bg-gray-800 border border-gray-600 rounded px-4 py-3 text-teal-100 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400 transition-all" />
+        <input type="text" id="cmd-input" placeholder="Enter query..." class="flex-1 bg-gray-800 border border-gray-600 rounded px-4 py-3 text-teal-100 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400 transition-all" />
         <button onclick="sendCommand()" class="bg-teal-700 hover:bg-teal-600 text-white px-6 py-3 rounded font-bold tracking-wider transition-colors">EXECUTE</button>
     </footer>
 
@@ -31,11 +31,19 @@
         const cmdInput = document.getElementById('cmd-input');
         const statusBadge = document.getElementById('status-badge');
         const socket = io();
+        
+        let isFirstConnect = true;
 
         socket.on('connect', () => {
             statusBadge.innerText = "ONLINE";
             statusBadge.classList.replace('text-red-400', 'text-teal-400');
             statusBadge.classList.replace('border-red-500', 'border-teal-500');
+            
+            // Only show welcome message once per page load to prevent mobile spam
+            if (isFirstConnect) {
+                appendMessage("APEX", "[SYSTEM ONLINE] Welcome to APEX Web Hub. Core Engine ready.");
+                isFirstConnect = false;
+            }
         });
 
         socket.on('disconnect', () => {
@@ -51,9 +59,18 @@
             const msgDiv = document.createElement('div');
             const senderColor = sender === "You" ? "text-white" : "text-teal-400";
             const formattedText = text.replace(/\n/g, '<br>');
-            msgDiv.innerHTML = `<span class="${senderColor} font-bold">${sender}:</span> <span class="text-gray-300">${formattedText}</span>`;
+            msgDiv.innerHTML = `<span class="${senderColor} font-bold mb-1 block">${sender}:</span> <span class="text-gray-300 block">${formattedText}</span>`;
+            
             chatWindow.appendChild(msgDiv);
-            chatWindow.scrollTop = chatWindow.scrollHeight;
+            
+            // Smart Scrolling Logic
+            if (sender === "APEX") {
+                // Scrolls to the top of APEX's new message smoothly
+                msgDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+            } else {
+                // Keeps user input locked to the bottom
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            }
         }
 
         function sendCommand() {
