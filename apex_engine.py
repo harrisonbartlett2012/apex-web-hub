@@ -10,6 +10,7 @@ import ast
 import re
 import time
 import threading
+from datetime import datetime
 import apex_database
 import finance_agent  
 import predictor
@@ -116,7 +117,6 @@ class ApexEngine:
             "current_model": self.current_model
         }
 
-    # Removed the async wrapper to ensure thread safety
     def generate_response(self, prompt):
         safe_to_run, lockdown_msg = self.check_guardrails()
         if not safe_to_run:
@@ -134,7 +134,11 @@ class ApexEngine:
                 role = "user" if msg['role'] == "user" else "model"
                 gemini_history.append({"role": role, "parts": [msg['content']]})
             
-            model = genai.GenerativeModel(self.current_model)
+            # Inject live time awareness
+            current_time = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+            sys_instruction = f"You are APEX, a highly capable AI assistant. The current date and time is {current_time}."
+            
+            model = genai.GenerativeModel(self.current_model, system_instruction=sys_instruction)
         except Exception as e:
             return f"[SYS_ERROR] Neural engine instantiation failed: {str(e)}"
 
@@ -151,7 +155,6 @@ class ApexEngine:
                 live_context = "\n".join([f"Source: {r.get('title', 'Unknown')}\nData: {r.get('body', '')}" for r in results])
                 system_prompt = f"Answer the user's query using ONLY the following live internet search results. Be concise.\n\nLIVE DATA:\n{live_context}\n\nUSER QUERY: {search_query}"
                 
-                # Standard synchronous call
                 response = model.generate_content(system_prompt)
                 reply = response.text
                 
@@ -172,7 +175,6 @@ class ApexEngine:
         try:
             max_retries = 2
             for attempt in range(max_retries):
-                # Standard synchronous call
                 response = model.generate_content(gemini_history)
                 reply = response.text
                 
