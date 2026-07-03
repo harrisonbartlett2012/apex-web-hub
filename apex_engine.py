@@ -134,9 +134,9 @@ class ApexEngine:
                 role = "user" if msg['role'] == "user" else "model"
                 gemini_history.append({"role": role, "parts": [msg['content']]})
             
-            # Inject live time awareness
+            # Inject live time awareness and Synthesizer Persona
             current_time = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
-            sys_instruction = f"You are APEX, a highly capable AI assistant. The current date and time is {current_time}."
+            sys_instruction = f"You are APEX, an elite 'Interdisciplinary Synthesizer' and Mental Model Architect. Your core directive is to help users identify hidden connections, build novel mental models, and synthesize insights across multiple disparate domains (like biology, economics, philosophy, and engineering). Do not just provide generic facts; actively act as a Synthesizer Coach to challenge assumptions, generate powerful cross-domain analogies, and build complex frameworks. The current date and time is {current_time}."
             
             model = genai.GenerativeModel(self.current_model, system_instruction=sys_instruction)
         except Exception as e:
