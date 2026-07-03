@@ -12,9 +12,6 @@ import time
 import threading
 from datetime import datetime
 import apex_database
-import finance_agent  
-import predictor
-
 # Web Scraper Library
 try:
     from ddgs import DDGS
