@@ -8,3 +8,5 @@ gunicorn
 simple-websocket
 fpdf
 google-generativeai
+beautifulsoup4
+requests
