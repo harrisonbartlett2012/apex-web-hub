@@ -20,8 +20,8 @@ def index():
 
 @socketio.on('connect')
 def handle_connect():
+    # Removed the server_message emit to prevent mobile reconnection spam
     logging.info(f"New web client connected: {request.sid}")
-    emit('server_message', {'sender': 'APEX', 'text': '[SYSTEM ONLINE] Welcome to APEX Web Hub. Core Engine ready.'})
 
 @socketio.on('user_message')
 def handle_user_message(data):
@@ -40,7 +40,7 @@ def handle_user_message(data):
         }, to=session_id)
         return
     
-    # Pure threaded background task, no complex event loops needed!
+    # Pure threaded background task, no complex event loops needed
     def background_ai_task(user_prompt, sid):
         try:
             # Process through the core engine synchronously
