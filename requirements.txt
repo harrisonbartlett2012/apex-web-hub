@@ -3,7 +3,6 @@ Flask-SocketIO
 python-engineio
 python-socketio
 pandas
-yfinance
 ddgs
 gunicorn
 simple-websocket
