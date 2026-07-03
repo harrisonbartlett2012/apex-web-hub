@@ -1,6 +1,5 @@
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
-import asyncio
 import logging
 from apex_engine import ApexEngine
 
@@ -8,6 +7,7 @@ from apex_engine import ApexEngine
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'apex_super_secret_key_2026'
 socketio = SocketIO(app, async_mode='threading', cors_allowed_origins="*")
+
 # Boot the APEX Engine
 logging.info("Booting APEX Core...")
 engine = ApexEngine()
@@ -39,21 +39,17 @@ def handle_user_message(data):
         }, to=session_id)
         return
     
-    # We run the AI generation in a background task so it doesn't freeze the web server
+    # Pure threaded background task, no complex event loops needed!
     def background_ai_task(user_prompt, sid):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            # Process through the core engine
-            reply = loop.run_until_complete(engine.generate_response(user_prompt))
+            # Process through the core engine synchronously
+            reply = engine.generate_response(user_prompt)
             socketio.emit('ai_response', {'sender': 'APEX', 'text': reply}, to=sid)
         except Exception as e:
             socketio.emit('ai_response', {'sender': 'APEX', 'text': f"[SYS_ERROR] Web Gateway Failure: {str(e)}"}, to=sid)
-        finally:
-            loop.close()
 
     socketio.start_background_task(background_ai_task, prompt, session_id)
 
 if __name__ == '__main__':
     logging.info("Starting APEX Cloud Node...")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000)
