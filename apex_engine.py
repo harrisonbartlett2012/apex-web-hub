@@ -1,8 +1,6 @@
 import os
 import json
 import logging
-import asyncio
-import urllib.request
 import sqlite3
 import pandas as pd
 from fpdf import FPDF
@@ -25,7 +23,7 @@ except ImportError:
     except ImportError:
         pass
 
-# NEW: The Cloud Brain Connection
+# The Cloud Brain Connection
 import google.generativeai as genai
 
 CONFIG_FILE = "apex_config.json"
@@ -118,7 +116,8 @@ class ApexEngine:
             "current_model": self.current_model
         }
 
-    async def generate_response(self, prompt):
+    # Removed the async wrapper to ensure thread safety
+    def generate_response(self, prompt):
         safe_to_run, lockdown_msg = self.check_guardrails()
         if not safe_to_run:
             return lockdown_msg
@@ -152,7 +151,8 @@ class ApexEngine:
                 live_context = "\n".join([f"Source: {r.get('title', 'Unknown')}\nData: {r.get('body', '')}" for r in results])
                 system_prompt = f"Answer the user's query using ONLY the following live internet search results. Be concise.\n\nLIVE DATA:\n{live_context}\n\nUSER QUERY: {search_query}"
                 
-                response = await model.generate_content_async(system_prompt)
+                # Standard synchronous call
+                response = model.generate_content(system_prompt)
                 reply = response.text
                 
                 apex_database.save_chat('user', prompt)
@@ -172,7 +172,8 @@ class ApexEngine:
         try:
             max_retries = 2
             for attempt in range(max_retries):
-                response = await model.generate_content_async(gemini_history)
+                # Standard synchronous call
+                response = model.generate_content(gemini_history)
                 reply = response.text
                 
                 code_blocks = re.findall(r'```python\n(.*?)\n```', reply, re.DOTALL)
