@@ -30,14 +30,6 @@ def handle_user_message(data):
     
     if not prompt:
         return
-
-    # Desktop-Exclusive Feature Check
-    if prompt.lower().startswith("/search"):
-        socketio.emit('ai_response', {
-            'sender': 'APEX',
-            'text': "[PREMIUM FEATURE] Live internet scraping is streamlined exclusively for the APEX Desktop Application. Please submit a standard query or upgrade for live data."
-        }, to=session_id)
-        return
     
     # Pure threaded background task, no complex event loops needed
     def background_ai_task(user_prompt, sid):
