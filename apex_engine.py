@@ -37,7 +37,18 @@ class ApexEngine:
         self.session_memory = apex_database.load_chat_history()
         self.api_key = os.environ.get("GEMINI_API_KEY", self.config.get("gemini_api_key", ""))
         genai.configure(api_key=self.api_key)
-        self.current_model = "gemini-1.5-flash"
+        
+        # --- DYNAMIC MODEL SELECTOR ---
+        self.current_model = "gemini-1.5-flash" # Fallback
+        try:
+            for m in genai.list_models():
+                if 'flash' in m.name.lower() and 'generateContent' in m.supported_generation_methods:
+                    self.current_model = m.name
+                    logging.info(f"Auto-selected brain: {self.current_model}")
+                    break
+        except Exception as e:
+            logging.warning(f"Auto-detect failed, using fallback. {e}")
+
         self.max_session_calls = self.config.get("max_session_calls", 1500)
         self.current_session_calls = 0
         self.guardrail_active = False
@@ -119,7 +130,6 @@ class ApexEngine:
             return f"[SYS_ERROR] Neural engine instantiation failed: {str(e)}"
 
         if prompt.lower().startswith("/search "):
-            # (Web scraping code remains unchanged)
             search_query = prompt[8:].strip()
             try:
                 raw_results = DDGS().text(search_query, max_results=2, backend="lite")
