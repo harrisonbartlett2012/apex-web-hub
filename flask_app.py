@@ -30,6 +30,7 @@ def handle_user_message(data):
     
     if not prompt:
         return
+    
     # Pure threaded background task, no complex event loops needed
     def background_ai_task(user_prompt, sid):
         try:
