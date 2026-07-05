@@ -11,3 +11,4 @@ google-generativeai
 beautifulsoup4
 requests
 Pillow
+PyPDF2
