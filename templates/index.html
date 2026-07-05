@@ -22,8 +22,13 @@
 
     <main id="chat-window" class="flex-1 bg-base-100 rounded-box p-4 overflow-y-auto mb-4 space-y-4 shadow-xl scroll-smooth"></main>
 
-    <footer class="flex gap-2">
-        <input type="text" id="cmd-input" placeholder="Enter query or topic to synthesize..." class="input input-bordered input-primary flex-1 focus:outline-none" />
+    <footer class="flex gap-2 items-center">
+        <input type="file" id="image-upload" accept="image/*" class="hidden" onchange="previewImage()" />
+        <button onclick="document.getElementById('image-upload').click()" class="btn btn-square btn-outline btn-primary" id="upload-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+        </button>
+
+        <input type="text" id="cmd-input" placeholder="Enter query or upload data to synthesize..." class="input input-bordered input-primary flex-1 focus:outline-none" />
         <button onclick="sendCommand()" class="btn btn-primary text-primary-content tracking-widest">EXECUTE</button>
     </footer>
 
@@ -33,6 +38,7 @@
         const statusBadge = document.getElementById('status-badge');
         const socket = io();
         let isFirstConnect = true;
+        let currentImageData = null;
 
         socket.on('connect', () => {
             statusBadge.innerText = "ONLINE";
@@ -54,9 +60,20 @@
         socket.on('server_message', (data) => appendMessage(data.sender, data.text));
         socket.on('ai_response', (data) => appendMessage(data.sender, data.text));
 
+        function previewImage() {
+            const file = document.getElementById('image-upload').files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                currentImageData = e.target.result;
+                document.getElementById('upload-btn').classList.replace('btn-outline', 'btn-active');
+            };
+            reader.readAsDataURL(file);
+        }
+
         function appendMessage(sender, text) {
             const msgDiv = document.createElement('div');
-            // DaisyUI Chat Bubble Logic
             const isUser = sender === "You";
             msgDiv.className = `chat ${isUser ? 'chat-end' : 'chat-start'}`;
             
@@ -79,10 +96,19 @@
 
         function sendCommand() {
             const text = cmdInput.value.trim();
-            if (!text) return;
-            appendMessage("You", text);
+            if (!text && !currentImageData) return;
+            
+            let displayMsg = text || "[Image Uploaded]";
+            if (currentImageData && text) displayMsg += " [📎 Image Attached]";
+            
+            appendMessage("You", displayMsg);
+            
+            socket.emit('user_message', { command: text, image: currentImageData });
+            
             cmdInput.value = '';
-            socket.emit('user_message', { command: text });
+            currentImageData = null;
+            document.getElementById('image-upload').value = '';
+            document.getElementById('upload-btn').classList.replace('btn-active', 'btn-outline');
         }
 
         cmdInput.addEventListener("keypress", function(event) {
