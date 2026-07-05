@@ -22,11 +22,17 @@
 
     <footer class="flex gap-2 items-center">
         <input type="file" id="file-upload" accept="image/*,.pdf" class="hidden" onchange="previewFile()" />
-        <button onclick="document.getElementById('file-upload').click()" class="btn btn-square btn-outline btn-primary" id="upload-btn">
+        <button onclick="document.getElementById('file-upload').click()" class="btn btn-square btn-outline btn-primary" id="upload-btn" title="Upload Image or PDF">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
         </button>
 
-        <input type="text" id="cmd-input" placeholder="Enter query or upload data to synthesize..." class="input input-bordered input-primary flex-1 focus:outline-none" />
+        <button onclick="toggleVoiceDictation()" class="btn btn-square btn-outline btn-secondary" id="voice-btn" title="Toggle Voice Dictation">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" id="mic-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+            </svg>
+        </button>
+
+        <input type="text" id="cmd-input" placeholder="Enter query, upload data, or click microphone..." class="input input-bordered input-primary flex-1 focus:outline-none" />
         <button onclick="sendCommand()" class="btn btn-primary text-primary-content tracking-widest">EXECUTE</button>
     </footer>
 
@@ -34,9 +40,81 @@
         const chatWindow = document.getElementById('chat-window');
         const cmdInput = document.getElementById('cmd-input');
         const statusBadge = document.getElementById('status-badge');
+        const voiceBtn = document.getElementById('voice-btn');
         const socket = io();
+        
         let isFirstConnect = true;
         let currentFileData = null;
+        
+        // Voice Module State
+        let recognition = null;
+        let isListening = false;
+
+        // Initialize Web Speech API if supported
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+                
+                // Append the dictated text directly to the input box in real time
+                if (finalTranscript) {
+                    cmdInput.value += (cmdInput.value ? ' ' : '') + finalTranscript;
+                }
+            };
+
+            recognition.onerror = (e) => {
+                console.error("Voice Engine Error: ", e.error);
+                stopListeningState();
+            };
+
+            recognition.onend = () => {
+                if (isListening) {
+                    recognition.start(); // Auto-restart if user didn't manually stop it
+                }
+            };
+        } else {
+            // Hide or disable button if browser doesn't support speech tracking
+            voiceBtn.classList.add('btn-disabled');
+            voiceBtn.setAttribute('title', 'Speech recognition not supported in this browser');
+        }
+
+        function toggleVoiceDictation() {
+            if (!recognition) return;
+            if (isListening) {
+                isListening = false;
+                recognition.stop();
+                stopListeningState();
+            } else {
+                isListening = true;
+                recognition.start();
+                startListeningState();
+            }
+        }
+
+        function startListeningState() {
+            voiceBtn.classList.replace('btn-outline', 'btn-active');
+            voiceBtn.classList.add('animate-pulse');
+        }
+
+        function stopListeningState() {
+            voiceBtn.classList.replace('btn-active', 'btn-outline');
+            voiceBtn.classList.remove('animate-pulse');
+            isListening = false;
+        }
 
         socket.on('connect', () => {
             statusBadge.innerText = "ONLINE";
@@ -82,6 +160,11 @@
             const text = cmdInput.value.trim();
             if (!text && !currentFileData) return;
             
+            // If dictating while hitting execute, pause the microphone cleanly
+            if (isListening) {
+                toggleVoiceDictation();
+            }
+
             let displayMsg = text || "[File Uploaded]";
             if (currentFileData && text) {
                 const isPdf = currentFileData.startsWith('data:application/pdf');
