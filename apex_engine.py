@@ -13,6 +13,9 @@ import threading
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
+import base64
+import io
+from PIL import Image
 import apex_database
 
 # Web Scraper Library
@@ -39,7 +42,7 @@ class ApexEngine:
         genai.configure(api_key=self.api_key)
         self.current_model = "gemini-1.5-flash"
 
-        self.max_session_calls = self.config.get("max_session_calls", 50)
+        self.max_session_calls = self.config.get("max_session_calls", 1500)
         self.current_session_calls = 0
         self.guardrail_active = False
 
@@ -53,7 +56,7 @@ class ApexEngine:
             "gemini_api_key": "Paste_Key_Here",
             "theme": "Dark",
             "auto_scout_interval": 12,
-            "max_session_calls": 50
+            "max_session_calls": 1500
         }
         if os.path.exists(CONFIG_FILE):
             try:
@@ -117,7 +120,7 @@ class ApexEngine:
             "current_model": self.current_model
         }
 
-    def generate_response(self, prompt):
+    def generate_response(self, prompt, image_b64=None):
         safe_to_run, lockdown_msg = self.check_guardrails()
         if not safe_to_run:
             return lockdown_msg
@@ -128,17 +131,25 @@ class ApexEngine:
         self.current_session_calls += 1
 
         try:
-            # Format APEX memory into Gemini's specific standard
             gemini_history = []
             for msg in self.session_memory:
                 role = "user" if msg['role'] == "user" else "model"
                 gemini_history.append({"role": role, "parts": [msg['content']]})
             
-            # Inject live time awareness and Synthesizer Persona
             current_time = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
             sys_instruction = f"You are APEX, an elite 'Interdisciplinary Synthesizer' and Mental Model Architect. Your core directive is to help users identify hidden connections, build novel mental models, and synthesize insights across multiple disparate domains (like biology, economics, philosophy, and engineering). Do not just provide generic facts; actively act as a Synthesizer Coach to challenge assumptions, generate powerful cross-domain analogies, and build complex frameworks. The current date and time is {current_time}."
             
             model = genai.GenerativeModel(self.current_model, system_instruction=sys_instruction)
+            
+            # --- VISION PROCESSING MODULE ---
+            prompt_parts = [prompt]
+            if image_b64:
+                if ',' in image_b64:
+                    image_b64 = image_b64.split(',')[1]
+                img_data = base64.b64decode(image_b64)
+                img = Image.open(io.BytesIO(img_data))
+                prompt_parts.append(img)
+                
         except Exception as e:
             return f"[SYS_ERROR] Neural engine instantiation failed: {str(e)}"
 
@@ -157,14 +168,12 @@ class ApexEngine:
                     url = r.get('href', '')
                     live_context += f"\nSource: {r.get('title', 'Unknown')}\n"
                     try:
-                        # APEX clicks the link and reads the website directly
                         page = requests.get(url, timeout=4)
                         soup = BeautifulSoup(page.content, 'html.parser')
                         paragraphs = soup.find_all('p')
                         full_text = " ".join([p.get_text() for p in paragraphs[:4]])
                         live_context += f"Deep Read Data: {full_text}\n"
                     except Exception:
-                        # Fallback to snippet if website blocks bots
                         live_context += f"Snippet Data: {r.get('body', '')}\n"
 
                 system_prompt = f"Answer the user's query using ONLY the following live internet search results. Synthesize the findings.\n\nLIVE DATA:\n{live_context}\n\nUSER QUERY: {search_query}"
@@ -182,9 +191,11 @@ class ApexEngine:
                 return f"[SYS_ERROR] Live connection failed: {str(e)}"
 
         # Standard Conversation Module
-        apex_database.save_chat('user', prompt)
-        self.session_memory.append({'role': 'user', 'content': prompt})
-        gemini_history.append({"role": "user", "parts": [prompt]})
+        save_prompt = prompt + " [Image Attached]" if image_b64 else prompt
+        apex_database.save_chat('user', save_prompt)
+        self.session_memory.append({'role': 'user', 'content': save_prompt})
+        
+        gemini_history.append({"role": "user", "parts": prompt_parts})
         
         try:
             max_retries = 2
