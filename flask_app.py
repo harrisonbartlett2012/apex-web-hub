@@ -6,7 +6,6 @@ from apex_engine import ApexEngine
 # Initialize Flask and WebSockets
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'apex_super_secret_key_2026'
-# Using 'threading' guarantees perfect stability on cloud servers
 socketio = SocketIO(app, async_mode='threading', cors_allowed_origins="*")
 
 # Boot the APEX Engine
