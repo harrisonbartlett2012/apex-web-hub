@@ -15,16 +15,14 @@
             <span class="loading loading-ring loading-md text-primary"></span>
             <h1 class="text-2xl font-bold tracking-widest text-primary">APEX // WEB_HUB</h1>
         </div>
-        <div id="status-badge" class="badge badge-warning gap-2">
-            CONNECTING...
-        </div>
+        <div id="status-badge" class="badge badge-warning gap-2">CONNECTING...</div>
     </header>
 
     <main id="chat-window" class="flex-1 bg-base-100 rounded-box p-4 overflow-y-auto mb-4 space-y-4 shadow-xl scroll-smooth"></main>
 
     <footer class="flex gap-2 items-center">
-        <input type="file" id="image-upload" accept="image/*" class="hidden" onchange="previewImage()" />
-        <button onclick="document.getElementById('image-upload').click()" class="btn btn-square btn-outline btn-primary" id="upload-btn">
+        <input type="file" id="file-upload" accept="image/*,.pdf" class="hidden" onchange="previewFile()" />
+        <button onclick="document.getElementById('file-upload').click()" class="btn btn-square btn-outline btn-primary" id="upload-btn">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
         </button>
 
@@ -38,35 +36,28 @@
         const statusBadge = document.getElementById('status-badge');
         const socket = io();
         let isFirstConnect = true;
-        let currentImageData = null;
+        let currentFileData = null;
 
         socket.on('connect', () => {
             statusBadge.innerText = "ONLINE";
             statusBadge.classList.replace('badge-warning', 'badge-success');
             statusBadge.classList.replace('badge-error', 'badge-success');
-            
-            if (isFirstConnect) {
-                appendMessage("APEX", "[SYSTEM ONLINE] Welcome to APEX Web Hub. Core Engine ready.");
-                isFirstConnect = false;
-            }
+            if (isFirstConnect) { appendMessage("APEX", "[SYSTEM ONLINE] Welcome to APEX Web Hub. Core Engine ready."); isFirstConnect = false; }
         });
 
         socket.on('disconnect', () => {
             statusBadge.innerText = "OFFLINE";
             statusBadge.classList.replace('badge-success', 'badge-error');
-            statusBadge.classList.replace('badge-warning', 'badge-error');
         });
 
-        socket.on('server_message', (data) => appendMessage(data.sender, data.text));
         socket.on('ai_response', (data) => appendMessage(data.sender, data.text));
 
-        function previewImage() {
-            const file = document.getElementById('image-upload').files[0];
+        function previewFile() {
+            const file = document.getElementById('file-upload').files[0];
             if (!file) return;
-            
             const reader = new FileReader();
             reader.onload = function(e) {
-                currentImageData = e.target.result;
+                currentFileData = e.target.result;
                 document.getElementById('upload-btn').classList.replace('btn-outline', 'btn-active');
             };
             reader.readAsDataURL(file);
@@ -76,46 +67,38 @@
             const msgDiv = document.createElement('div');
             const isUser = sender === "You";
             msgDiv.className = `chat ${isUser ? 'chat-end' : 'chat-start'}`;
-            
             const bubbleColor = isUser ? 'chat-bubble-neutral' : 'chat-bubble-primary';
-            const formattedText = text.replace(/\n/g, '<br>');
             
             msgDiv.innerHTML = `
                 <div class="chat-header opacity-50 mb-1">${sender}</div>
-                <div class="chat-bubble ${bubbleColor} shadow-md">${formattedText}</div>
+                <div class="chat-bubble ${bubbleColor} shadow-md">${text.replace(/\n/g, '<br>')}</div>
             `;
-            
             chatWindow.appendChild(msgDiv);
-            
-            if (!isUser) {
-                msgDiv.scrollIntoView({ behavior: "smooth", block: "start" });
-            } else {
-                chatWindow.scrollTop = chatWindow.scrollHeight;
-            }
+            if (!isUser) msgDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+            else chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
         function sendCommand() {
             const text = cmdInput.value.trim();
-            if (!text && !currentImageData) return;
+            if (!text && !currentFileData) return;
             
-            let displayMsg = text || "[Image Uploaded]";
-            if (currentImageData && text) displayMsg += " [📎 Image Attached]";
+            let displayMsg = text || "[File Uploaded]";
+            if (currentFileData && text) {
+                const isPdf = currentFileData.startsWith('data:application/pdf');
+                displayMsg += isPdf ? " [📄 PDF Attached]" : " [📎 Image Attached]";
+            }
             
             appendMessage("You", displayMsg);
-            
-            socket.emit('user_message', { command: text, image: currentImageData });
+            socket.emit('user_message', { command: text, file_data: currentFileData });
             
             cmdInput.value = '';
-            currentImageData = null;
-            document.getElementById('image-upload').value = '';
+            currentFileData = null;
+            document.getElementById('file-upload').value = '';
             document.getElementById('upload-btn').classList.replace('btn-active', 'btn-outline');
         }
 
-        cmdInput.addEventListener("keypress", function(event) {
-            if (event.key === "Enter") {
-                event.preventDefault();
-                sendCommand();
-            }
+        cmdInput.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") { e.preventDefault(); sendCommand(); }
         });
     </script>
 </body>

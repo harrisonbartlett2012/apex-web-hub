@@ -3,18 +3,15 @@ from flask_socketio import SocketIO, emit
 import logging
 from apex_engine import ApexEngine
 
-# Initialize Flask and WebSockets
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'apex_super_secret_key_2026'
 socketio = SocketIO(app, async_mode='threading', cors_allowed_origins="*")
 
-# Boot the APEX Engine
 logging.info("Booting APEX Core...")
 engine = ApexEngine()
 
 @app.route('/')
 def index():
-    """Serves the main APEX web interface."""
     return render_template('index.html')
 
 @socketio.on('connect')
@@ -23,24 +20,21 @@ def handle_connect():
 
 @socketio.on('user_message')
 def handle_user_message(data):
-    """Intercepts chat messages and processes them through the engine."""
     prompt = data.get('command', '').strip()
-    image_data = data.get('image', None)
+    file_data = data.get('file_data', None)
     session_id = request.sid
     
-    if not prompt and not image_data:
+    if not prompt and not file_data:
         return
     
-    # Pure threaded background task, no complex event loops needed
-    def background_ai_task(user_prompt, img_b64, sid):
+    def background_ai_task(user_prompt, incoming_file, sid):
         try:
-            # Passes both the text and the image to the brain
-            reply = engine.generate_response(user_prompt, img_b64)
+            reply = engine.generate_response(user_prompt, incoming_file)
             socketio.emit('ai_response', {'sender': 'APEX', 'text': reply}, to=sid)
         except Exception as e:
             socketio.emit('ai_response', {'sender': 'APEX', 'text': f"[SYS_ERROR] Web Gateway Failure: {str(e)}"}, to=sid)
 
-    socketio.start_background_task(background_ai_task, prompt, image_data, session_id)
+    socketio.start_background_task(background_ai_task, prompt, file_data, session_id)
 
 if __name__ == '__main__':
     logging.info("Starting APEX Cloud Node...")
