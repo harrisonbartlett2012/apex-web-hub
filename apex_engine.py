@@ -49,7 +49,7 @@ class ApexEngine:
             logging.warning(f"Auto-detect failed, using fallback. {e}")
 
         # --- HARD-LOCKED COMPUTE QUOTA ---
-self.max_session_calls = 1500
+        self.max_session_calls = 1500
         self.current_session_calls = 0
         self.guardrail_active = False
 
