@@ -8,25 +8,42 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
 </head>
-<body class="bg-base-300 h-screen flex flex-col p-4 md:p-8 font-mono">
+<body class="bg-base-300 h-screen flex flex-col p-4 md:p-8 font-mono relative overflow-hidden">
+
+    <div id="auth-overlay" class="absolute inset-0 bg-base-300/95 backdrop-blur-md z-50 flex items-center justify-center {{ 'hidden' if logged_in else '' }}">
+        <div class="card w-96 bg-base-100 shadow-2xl border border-primary/20">
+            <div class="card-body items-center text-center">
+                <h2 class="card-title text-primary tracking-widest mb-4">SYSTEM LOCKED</h2>
+                <p class="text-sm opacity-70 mb-4">Enter Master Access Code to initialize APEX.</p>
+                <input type="password" id="auth-input" placeholder="••••••••" class="input input-bordered input-primary w-full max-w-xs text-center tracking-widest" />
+                <div class="card-actions mt-6 w-full">
+                    <button onclick="attemptLogin()" class="btn btn-primary w-full tracking-widest">DECRYPT</button>
+                </div>
+                <p id="auth-error" class="text-error text-xs mt-4 hidden">INVALID CREDENTIALS</p>
+            </div>
+        </div>
+    </div>
 
     <header class="flex justify-between items-center border-b border-primary/30 pb-4 mb-4">
         <div class="flex items-center gap-2">
             <span class="loading loading-ring loading-md text-primary"></span>
             <h1 class="text-2xl font-bold tracking-widest text-primary">APEX // WEB_HUB</h1>
         </div>
-        <div id="status-badge" class="badge badge-warning gap-2">CONNECTING...</div>
+        <div class="flex gap-2">
+            <div id="status-badge" class="badge badge-warning gap-2">STANDBY</div>
+            <button onclick="logout()" class="btn btn-xs btn-outline btn-error ml-2">LOCK</button>
+        </div>
     </header>
 
     <main id="chat-window" class="flex-1 bg-base-100 rounded-box p-4 overflow-y-auto mb-4 space-y-4 shadow-xl scroll-smooth"></main>
 
     <footer class="flex gap-2 items-center">
         <input type="file" id="file-upload" accept="image/*,.pdf" class="hidden" onchange="previewFile()" />
-        <button onclick="document.getElementById('file-upload').click()" class="btn btn-square btn-outline btn-primary" id="upload-btn" title="Upload Image or PDF">
+        <button onclick="document.getElementById('file-upload').click()" class="btn btn-square btn-outline btn-primary" id="upload-btn">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
         </button>
 
-        <button onclick="toggleVoiceDictation()" class="btn btn-square btn-outline btn-secondary" id="voice-btn" title="Toggle Voice Dictation">
+        <button onclick="toggleVoiceDictation()" class="btn btn-square btn-outline btn-secondary" id="voice-btn">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" id="mic-icon">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
@@ -37,152 +54,116 @@
     </footer>
 
     <script>
-        const chatWindow = document.getElementById('chat-window');
-        const cmdInput = document.getElementById('cmd-input');
-        const statusBadge = document.getElementById('status-badge');
-        const voiceBtn = document.getElementById('voice-btn');
-        const socket = io();
+        let socket;
+        const isLoggedIn = {{ 'true' if logged_in else 'false' }};
         
-        let isFirstConnect = true;
-        let currentFileData = null;
-        
-        // Voice Module State
-        let recognition = null;
-        let isListening = false;
-
-        // Initialize Web Speech API if supported
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'en-US';
-
-            recognition.onresult = (event) => {
-                let interimTranscript = '';
-                let finalTranscript = '';
-
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript;
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
-                    }
-                }
-                
-                // Append the dictated text directly to the input box in real time
-                if (finalTranscript) {
-                    cmdInput.value += (cmdInput.value ? ' ' : '') + finalTranscript;
-                }
-            };
-
-            recognition.onerror = (e) => {
-                console.error("Voice Engine Error: ", e.error);
-                stopListeningState();
-            };
-
-            recognition.onend = () => {
-                if (isListening) {
-                    recognition.start(); // Auto-restart if user didn't manually stop it
-                }
-            };
-        } else {
-            // Hide or disable button if browser doesn't support speech tracking
-            voiceBtn.classList.add('btn-disabled');
-            voiceBtn.setAttribute('title', 'Speech recognition not supported in this browser');
+        if (isLoggedIn) {
+            initializeSystem();
         }
 
-        function toggleVoiceDictation() {
-            if (!recognition) return;
-            if (isListening) {
-                isListening = false;
-                recognition.stop();
-                stopListeningState();
+        async function attemptLogin() {
+            const code = document.getElementById('auth-input').value;
+            const res = await fetch('/authenticate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ passcode: code })
+            });
+            
+            if (res.ok) {
+                document.getElementById('auth-overlay').classList.add('hidden');
+                initializeSystem();
             } else {
-                isListening = true;
-                recognition.start();
-                startListeningState();
+                document.getElementById('auth-error').classList.remove('hidden');
             }
         }
 
-        function startListeningState() {
-            voiceBtn.classList.replace('btn-outline', 'btn-active');
-            voiceBtn.classList.add('animate-pulse');
+        async function logout() {
+            await fetch('/logout', { method: 'POST' });
+            window.location.reload();
         }
 
-        function stopListeningState() {
-            voiceBtn.classList.replace('btn-active', 'btn-outline');
-            voiceBtn.classList.remove('animate-pulse');
-            isListening = false;
+        document.getElementById('auth-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') attemptLogin();
+        });
+
+        // --- CORE CHAT LOGIC ---
+        function initializeSystem() {
+            socket = io();
+            const chatWindow = document.getElementById('chat-window');
+            const cmdInput = document.getElementById('cmd-input');
+            const statusBadge = document.getElementById('status-badge');
+            let isFirstConnect = true;
+
+            socket.on('connect', () => {
+                statusBadge.innerText = "ONLINE";
+                statusBadge.classList.replace('badge-warning', 'badge-success');
+                statusBadge.classList.replace('badge-error', 'badge-success');
+                if (isFirstConnect) { appendMessage("APEX", "[SYSTEM ONLINE] Security protocols passed. Core Engine ready."); isFirstConnect = false; }
+            });
+
+            socket.on('disconnect', () => {
+                statusBadge.innerText = "OFFLINE";
+                statusBadge.classList.replace('badge-success', 'badge-error');
+            });
+
+            socket.on('ai_response', (data) => appendMessage(data.sender, data.text));
+
+            function appendMessage(sender, text) {
+                const msgDiv = document.createElement('div');
+                const isUser = sender === "You";
+                msgDiv.className = `chat ${isUser ? 'chat-end' : 'chat-start'}`;
+                const bubbleColor = isUser ? 'chat-bubble-neutral' : 'chat-bubble-primary';
+                msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1">${sender}</div><div class="chat-bubble ${bubbleColor} shadow-md">${text.replace(/\n/g, '<br>')}</div>`;
+                chatWindow.appendChild(msgDiv);
+                if (!isUser) msgDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+                else chatWindow.scrollTop = chatWindow.scrollHeight;
+            }
+
+            window.sendCommand = function() {
+                const text = cmdInput.value.trim();
+                if (!text && !window.currentFileData) return;
+                let displayMsg = text || "[File Uploaded]";
+                if (window.currentFileData && text) {
+                    displayMsg += window.currentFileData.startsWith('data:application/pdf') ? " [📄 PDF Attached]" : " [📎 Image Attached]";
+                }
+                appendMessage("You", displayMsg);
+                socket.emit('user_message', { command: text, file_data: window.currentFileData });
+                cmdInput.value = ''; window.currentFileData = null;
+                document.getElementById('file-upload').value = '';
+                document.getElementById('upload-btn').classList.replace('btn-active', 'btn-outline');
+            }
+
+            cmdInput.addEventListener("keypress", (e) => {
+                if (e.key === "Enter") { e.preventDefault(); sendCommand(); }
+            });
         }
-
-        socket.on('connect', () => {
-            statusBadge.innerText = "ONLINE";
-            statusBadge.classList.replace('badge-warning', 'badge-success');
-            statusBadge.classList.replace('badge-error', 'badge-success');
-            if (isFirstConnect) { appendMessage("APEX", "[SYSTEM ONLINE] Welcome to APEX Web Hub. Core Engine ready."); isFirstConnect = false; }
-        });
-
-        socket.on('disconnect', () => {
-            statusBadge.innerText = "OFFLINE";
-            statusBadge.classList.replace('badge-success', 'badge-error');
-        });
-
-        socket.on('ai_response', (data) => appendMessage(data.sender, data.text));
-
+        
+        // File Preview & Voice Handlers
         function previewFile() {
             const file = document.getElementById('file-upload').files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = function(e) {
-                currentFileData = e.target.result;
-                document.getElementById('upload-btn').classList.replace('btn-outline', 'btn-active');
-            };
+            reader.onload = e => { window.currentFileData = e.target.result; document.getElementById('upload-btn').classList.replace('btn-outline', 'btn-active'); };
             reader.readAsDataURL(file);
         }
 
-        function appendMessage(sender, text) {
-            const msgDiv = document.createElement('div');
-            const isUser = sender === "You";
-            msgDiv.className = `chat ${isUser ? 'chat-end' : 'chat-start'}`;
-            const bubbleColor = isUser ? 'chat-bubble-neutral' : 'chat-bubble-primary';
-            
-            msgDiv.innerHTML = `
-                <div class="chat-header opacity-50 mb-1">${sender}</div>
-                <div class="chat-bubble ${bubbleColor} shadow-md">${text.replace(/\n/g, '<br>')}</div>
-            `;
-            chatWindow.appendChild(msgDiv);
-            if (!isUser) msgDiv.scrollIntoView({ behavior: "smooth", block: "start" });
-            else chatWindow.scrollTop = chatWindow.scrollHeight;
+        // Voice API Logic
+        let recognition = null; let isListening = false;
+        if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.continuous = true; recognition.interimResults = true; recognition.lang = 'en-US';
+            recognition.onresult = (e) => {
+                let finalTranscript = '';
+                for (let i = e.resultIndex; i < e.results.length; ++i) if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
+                if (finalTranscript) document.getElementById('cmd-input').value += (document.getElementById('cmd-input').value ? ' ' : '') + finalTranscript;
+            };
         }
-
-        function sendCommand() {
-            const text = cmdInput.value.trim();
-            if (!text && !currentFileData) return;
-            
-            // If dictating while hitting execute, pause the microphone cleanly
-            if (isListening) {
-                toggleVoiceDictation();
-            }
-
-            let displayMsg = text || "[File Uploaded]";
-            if (currentFileData && text) {
-                const isPdf = currentFileData.startsWith('data:application/pdf');
-                displayMsg += isPdf ? " [📄 PDF Attached]" : " [📎 Image Attached]";
-            }
-            
-            appendMessage("You", displayMsg);
-            socket.emit('user_message', { command: text, file_data: currentFileData });
-            
-            cmdInput.value = '';
-            currentFileData = null;
-            document.getElementById('file-upload').value = '';
-            document.getElementById('upload-btn').classList.replace('btn-active', 'btn-outline');
+        window.toggleVoiceDictation = function() {
+            if (!recognition) return;
+            const voiceBtn = document.getElementById('voice-btn');
+            if (isListening) { isListening = false; recognition.stop(); voiceBtn.classList.replace('btn-active', 'btn-outline'); voiceBtn.classList.remove('animate-pulse'); }
+            else { isListening = true; recognition.start(); voiceBtn.classList.replace('btn-outline', 'btn-active'); voiceBtn.classList.add('animate-pulse'); }
         }
-
-        cmdInput.addEventListener("keypress", (e) => {
-            if (e.key === "Enter") { e.preventDefault(); sendCommand(); }
-        });
     </script>
 </body>
 </html>
