@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APEX // Command Center</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-base-300 h-screen flex flex-col p-4 md:p-8 font-mono relative overflow-hidden text-base-content">
+
+    <div id="auth-overlay" class="absolute inset-0 bg-base-300/95 backdrop-blur-md z-50 flex items-center justify-center {{ 'hidden' if admin_logged_in else '' }}">
+        <div class="card w-96 bg-base-100 shadow-2xl border border-secondary/20">
+            <div class="card-body items-center text-center">
+                <h2 class="card-title text-secondary tracking-widest mb-4">COMMAND CENTER</h2>
+                <p class="text-sm opacity-70 mb-4">Enter Admin Access Code.</p>
+                <input type="password" id="auth-input" placeholder="••••••••" class="input input-bordered input-secondary w-full max-w-xs text-center tracking-widest" />
+                <div class="card-actions mt-6 w-full">
+                    <button onclick="attemptAdminLogin()" class="btn btn-secondary w-full tracking-widest">AUTHORIZE</button>
+                </div>
+                <p id="auth-error" class="text-error text-xs mt-4 hidden">UNAUTHORIZED ACCESS DENIED</p>
+            </div>
+        </div>
+    </div>
+
+    <header class="flex justify-between items-center border-b border-secondary/30 pb-4 mb-8">
+        <div class="flex items-center gap-2">
+            <h1 class="text-2xl font-bold tracking-widest text-secondary">APEX // OVERSEER</h1>
+        </div>
+        <a href="/" class="btn btn-xs btn-outline">RETURN TO HUB</a>
+    </header>
+
+    <main class="flex-1 max-w-5xl w-full mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <div class="card bg-base-100 shadow-xl border border-secondary/20">
+            <div class="card-body">
+                <h2 class="card-title text-sm opacity-70 tracking-widest">GEMINI COMPUTE QUOTA</h2>
+                <div class="text-4xl font-bold text-secondary my-2" id="api-counter">0 / 1500</div>
+                <progress id="api-progress" class="progress progress-secondary w-full" value="0" max="1500"></progress>
+                <div class="text-xs opacity-50 mt-2 text-right">Daily limit resets at midnight</div>
+            </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl border border-info/20">
+            <div class="card-body">
+                <h2 class="card-title text-sm opacity-70 tracking-widest">ACTIVE WEB SOCKETS</h2>
+                <div class="text-4xl font-bold text-info my-2" id="user-counter">0</div>
+                <div class="text-xs opacity-50 mt-2 text-right">Live connections in VIP Lounge</div>
+            </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl border border-success/20">
+            <div class="card-body">
+                <h2 class="card-title text-sm opacity-70 tracking-widest">SERVER UPTIME</h2>
+                <div class="text-4xl font-bold text-success my-2" id="uptime-counter">00:00:00</div>
+                <div class="text-xs opacity-50 mt-2 text-right">Since last Render deployment</div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        const isLoggedIn = {{ 'true' if admin_logged_in else 'false' }};
+        let pollInterval;
+        
+        if (isLoggedIn) {
+            startTelemetry();
+        }
+
+        async function attemptAdminLogin() {
+            const code = document.getElementById('auth-input').value;
+            const res = await fetch('/admin/authenticate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ passcode: code })
+            });
+            
+            if (res.ok) {
+                document.getElementById('auth-overlay').classList.add('hidden');
+                startTelemetry();
+            } else {
+                document.getElementById('auth-error').classList.remove('hidden');
+            }
+        }
+
+        document.getElementById('auth-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') attemptAdminLogin();
+        });
+
+        // Fetches server stats every 3 seconds
+        function startTelemetry() {
+            fetchStats();
+            pollInterval = setInterval(fetchStats, 3000);
+        }
+
+        async function fetchStats() {
+            try {
+                const res = await fetch('/admin/stats');
+                if (res.status === 401) {
+                    clearInterval(pollInterval);
+                    window.location.reload();
+                    return;
+                }
+                const data = await res.json();
+                
+                document.getElementById('api-counter').innerText = `${data.api_calls} / ${data.api_limit}`;
+                document.getElementById('api-progress').value = data.api_calls;
+                document.getElementById('api-progress').max = data.api_limit;
+                
+                document.getElementById('user-counter').innerText = data.active_users;
+                document.getElementById('uptime-counter').innerText = data.uptime;
+                
+            } catch (err) {
+                console.error("Telemetry connection lost:", err);
+            }
+        }
+    </script>
+</body>
+</html>
