@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, session, jsonify, redirect
+from flask_cors import CORS
 from flask_socketio import SocketIO, emit, disconnect
 import logging
 import time
@@ -6,6 +7,11 @@ import datetime
 from apex_engine import ApexEngine
 
 app = Flask(__name__)
+
+# --- THE CORS UPGRADE ---
+# This allows your mobile app to talk to the server
+CORS(app) 
+
 app.config['SECRET_KEY'] = 'apex_super_secret_key_2026'
 app.config['MAX_CONTENT_LENGTH'] = 15 * 1024 * 1024 
 
