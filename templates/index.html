@@ -38,7 +38,11 @@
                 <option value="Academic">Academic Researcher</option>
             </select>
             
-            <button onclick="logout()" class="btn btn-xs btn-outline btn-error ml-2">LOCK</button>
+            <button onclick="exportChat()" class="btn btn-xs btn-outline btn-info ml-2" title="Download Session Archive">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            </button>
+
+            <button onclick="logout()" class="btn btn-xs btn-outline btn-error ml-2" title="Lock Terminal">LOCK</button>
         </div>
     </header>
 
@@ -46,11 +50,11 @@
 
     <footer class="flex gap-2 items-center">
         <input type="file" id="file-upload" accept="image/*,.pdf" class="hidden" onchange="previewFile()" />
-        <button onclick="document.getElementById('file-upload').click()" class="btn btn-square btn-outline btn-primary" id="upload-btn">
+        <button onclick="document.getElementById('file-upload').click()" class="btn btn-square btn-outline btn-primary" id="upload-btn" title="Upload PDF or Image">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
         </button>
 
-        <button onclick="toggleVoiceDictation()" class="btn btn-square btn-outline btn-secondary" id="voice-btn">
+        <button onclick="toggleVoiceDictation()" class="btn btn-square btn-outline btn-secondary" id="voice-btn" title="Toggle Voice Dictation">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" id="mic-icon">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
@@ -93,6 +97,32 @@
             if (e.key === 'Enter') attemptLogin();
         });
 
+        // --- NEW: THE ARCHIVIST EXPORT LOGIC ---
+        function exportChat() {
+            const chatElements = document.querySelectorAll('.chat');
+            if (chatElements.length === 0) return;
+            
+            let logText = "APEX // SECURE CHAT ARCHIVE\n";
+            logText += "Generated: " + new Date().toLocaleString() + "\n";
+            logText += "=========================================\n\n";
+            
+            chatElements.forEach(chat => {
+                const header = chat.querySelector('.chat-header').innerText;
+                const body = chat.querySelector('.chat-bubble').innerText;
+                logText += `[${header}]\n${body}\n\n`;
+            });
+            
+            const blob = new Blob([logText], { type: "text/plain" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `APEX_Archive_${new Date().getTime()}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
         function initializeSystem() {
             socket = io();
             const chatWindow = document.getElementById('chat-window');
@@ -129,7 +159,6 @@
                 const text = cmdInput.value.trim();
                 if (!text && !window.currentFileData) return;
                 
-                // Get the current selected persona
                 const selectedPersona = document.getElementById('persona-select').value;
                 
                 let displayMsg = text || "[File Uploaded]";
@@ -139,7 +168,6 @@
                 
                 appendMessage("You", displayMsg);
                 
-                // Send the persona attached to the payload
                 socket.emit('user_message', { 
                     command: text, 
                     file_data: window.currentFileData,
