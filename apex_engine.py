@@ -95,7 +95,7 @@ class ApexEngine:
             return False, "[SYS_LOCKDOWN] API call limit reached."
         return True, "OK"
 
-    def generate_response(self, prompt, file_b64=None):
+    def generate_response(self, prompt, file_b64=None, persona="Synthesizer"):
         safe_to_run, lockdown_msg = self.check_guardrails()
         if not safe_to_run: return lockdown_msg
         if not self.api_key or self.api_key == "Paste_Key_Here": return "[SYS_ERROR] Missing Gemini API Key."
@@ -103,12 +103,18 @@ class ApexEngine:
         self.current_session_calls += 1
 
         try:
-            # --- THE VAULT: ROLLING CONTEXT WINDOW ---
-            # We only grab the last 20 messages to prevent token overflow crashes
             recent_memory = self.session_memory[-20:] if len(self.session_memory) > 20 else self.session_memory
-            
             gemini_history = [{"role": "user" if m['role'] == "user" else "model", "parts": [m['content']]} for m in recent_memory]
-            sys_instruction = f"You are APEX, an elite 'Interdisciplinary Synthesizer'. Current date and time is {datetime.now().strftime('%A, %B %d, %Y at %I:%M %p')}."
+            
+            # --- DYNAMIC PERSONA ROUTING ---
+            current_time = datetime.now().strftime('%A, %B %d, %Y at %I:%M %p')
+            if persona == "Engineer":
+                sys_instruction = f"You are APEX, a Senior Software Engineer. You write clean, modular, and highly optimized code. You adhere strictly to architectural best practices. Current time: {current_time}."
+            elif persona == "Academic":
+                sys_instruction = f"You are APEX, an Academic Researcher. You provide formal, highly structured, and objective answers. Analyze concepts with logical rigor and cite structural theories where applicable. Current time: {current_time}."
+            else:
+                sys_instruction = f"You are APEX, an elite 'Interdisciplinary Synthesizer'. Your core directive is to help users identify hidden connections and build novel mental models. Current date and time is {current_time}."
+
             model = genai.GenerativeModel(self.current_model, system_instruction=sys_instruction)
             
             prompt_parts = [prompt]
