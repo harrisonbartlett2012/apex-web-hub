@@ -29,8 +29,15 @@
             <span class="loading loading-ring loading-md text-primary"></span>
             <h1 class="text-2xl font-bold tracking-widest text-primary">APEX // WEB_HUB</h1>
         </div>
-        <div class="flex gap-2">
+        <div class="flex items-center gap-2">
             <div id="status-badge" class="badge badge-warning gap-2">STANDBY</div>
+            
+            <select id="persona-select" class="select select-bordered select-xs select-primary ml-2">
+                <option value="Synthesizer">Synthesizer</option>
+                <option value="Engineer">Software Engineer</option>
+                <option value="Academic">Academic Researcher</option>
+            </select>
+            
             <button onclick="logout()" class="btn btn-xs btn-outline btn-error ml-2">LOCK</button>
         </div>
     </header>
@@ -86,7 +93,6 @@
             if (e.key === 'Enter') attemptLogin();
         });
 
-        // --- CORE CHAT LOGIC ---
         function initializeSystem() {
             socket = io();
             const chatWindow = document.getElementById('chat-window');
@@ -122,12 +128,24 @@
             window.sendCommand = function() {
                 const text = cmdInput.value.trim();
                 if (!text && !window.currentFileData) return;
+                
+                // Get the current selected persona
+                const selectedPersona = document.getElementById('persona-select').value;
+                
                 let displayMsg = text || "[File Uploaded]";
                 if (window.currentFileData && text) {
                     displayMsg += window.currentFileData.startsWith('data:application/pdf') ? " [📄 PDF Attached]" : " [📎 Image Attached]";
                 }
+                
                 appendMessage("You", displayMsg);
-                socket.emit('user_message', { command: text, file_data: window.currentFileData });
+                
+                // Send the persona attached to the payload
+                socket.emit('user_message', { 
+                    command: text, 
+                    file_data: window.currentFileData,
+                    persona: selectedPersona
+                });
+                
                 cmdInput.value = ''; window.currentFileData = null;
                 document.getElementById('file-upload').value = '';
                 document.getElementById('upload-btn').classList.replace('btn-active', 'btn-outline');
@@ -138,7 +156,6 @@
             });
         }
         
-        // File Preview & Voice Handlers
         function previewFile() {
             const file = document.getElementById('file-upload').files[0];
             if (!file) return;
@@ -147,7 +164,6 @@
             reader.readAsDataURL(file);
         }
 
-        // Voice API Logic
         let recognition = null; let isListening = false;
         if (window.SpeechRecognition || window.webkitSpeechRecognition) {
             recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
