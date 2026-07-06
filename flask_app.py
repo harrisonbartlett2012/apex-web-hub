@@ -5,7 +5,6 @@ import time
 from apex_engine import ApexEngine
 
 app = Flask(__name__)
-# Cryptographic key for session cookies
 app.config['SECRET_KEY'] = 'apex_super_secret_key_2026'
 app.config['MAX_CONTENT_LENGTH'] = 15 * 1024 * 1024 
 
@@ -17,7 +16,6 @@ engine = ApexEngine()
 user_requests = {}
 MAX_MESSAGES_PER_MINUTE = 10
 
-# --- THE VIP LOUNGE: MASTER PASSWORD ---
 MASTER_ACCESS_CODE = "APEXWEB"
 
 def check_rate_limit(sid):
@@ -32,12 +30,10 @@ def check_rate_limit(sid):
 
 @app.route('/')
 def index():
-    # If they aren't logged in, they still get the page, but the JS will show the lock screen
     return render_template('index.html', logged_in=session.get('authenticated', False))
 
 @app.route('/authenticate', methods=['POST'])
 def authenticate():
-    """Validates the password and issues a secure session cookie."""
     data = request.get_json()
     if data and data.get('passcode') == MASTER_ACCESS_CODE:
         session['authenticated'] = True
@@ -51,7 +47,6 @@ def logout():
 
 @socketio.on('connect')
 def handle_connect():
-    # The Bouncer: Drop the WebSocket connection if they don't have a valid session cookie
     if not session.get('authenticated'):
         disconnect()
         return
@@ -71,6 +66,7 @@ def handle_user_message(data):
 
     prompt = data.get('command', '').strip()
     file_data = data.get('file_data', None)
+    persona = data.get('persona', 'Synthesizer') # Captures the selected persona
     session_id = request.sid
     
     if not prompt and not file_data:
@@ -83,14 +79,14 @@ def handle_user_message(data):
         }, to=session_id)
         return
     
-    def background_ai_task(user_prompt, incoming_file, sid):
+    def background_ai_task(user_prompt, incoming_file, user_persona, sid):
         try:
-            reply = engine.generate_response(user_prompt, incoming_file)
-            socketio.emit('ai_response', {'sender': 'APEX', 'text': reply}, to=sid)
+            reply = engine.generate_response(user_prompt, incoming_file, user_persona)
+            socketio.emit('ai_response', {'sender': f'APEX [{user_persona}]', 'text': reply}, to=sid)
         except Exception as e:
             socketio.emit('ai_response', {'sender': 'APEX', 'text': f"[SYS_ERROR] Web Gateway Failure: {str(e)}"}, to=sid)
 
-    socketio.start_background_task(background_ai_task, prompt, file_data, session_id)
+    socketio.start_background_task(background_ai_task, prompt, file_data, persona, session_id)
 
 if __name__ == '__main__':
     logging.info("Starting APEX Cloud Node...")
