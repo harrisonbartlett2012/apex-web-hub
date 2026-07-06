@@ -38,8 +38,7 @@ class ApexEngine:
         self.api_key = os.environ.get("GEMINI_API_KEY", self.config.get("gemini_api_key", ""))
         genai.configure(api_key=self.api_key)
         
-        # --- DYNAMIC MODEL SELECTOR ---
-        self.current_model = "gemini-1.5-flash" # Fallback
+        self.current_model = "gemini-1.5-flash"
         try:
             for m in genai.list_models():
                 if 'flash' in m.name.lower() and 'generateContent' in m.supported_generation_methods:
@@ -104,14 +103,17 @@ class ApexEngine:
         self.current_session_calls += 1
 
         try:
-            gemini_history = [{"role": "user" if m['role'] == "user" else "model", "parts": [m['content']]} for m in self.session_memory]
+            # --- THE VAULT: ROLLING CONTEXT WINDOW ---
+            # We only grab the last 20 messages to prevent token overflow crashes
+            recent_memory = self.session_memory[-20:] if len(self.session_memory) > 20 else self.session_memory
+            
+            gemini_history = [{"role": "user" if m['role'] == "user" else "model", "parts": [m['content']]} for m in recent_memory]
             sys_instruction = f"You are APEX, an elite 'Interdisciplinary Synthesizer'. Current date and time is {datetime.now().strftime('%A, %B %d, %Y at %I:%M %p')}."
             model = genai.GenerativeModel(self.current_model, system_instruction=sys_instruction)
             
             prompt_parts = [prompt]
             file_tag = ""
             
-            # --- MULTI-MODAL FILE PROCESSING WITH STRICT VALIDATION ---
             if file_b64:
                 header, encoded = file_b64.split(',', 1)
                 file_data = base64.b64decode(encoded)
