@@ -111,7 +111,7 @@ class ApexEngine:
             prompt_parts = [prompt]
             file_tag = ""
             
-            # --- MULTI-MODAL FILE PROCESSING ---
+            # --- MULTI-MODAL FILE PROCESSING WITH STRICT VALIDATION ---
             if file_b64:
                 header, encoded = file_b64.split(',', 1)
                 file_data = base64.b64decode(encoded)
@@ -121,10 +121,15 @@ class ApexEngine:
                     pdf_text = "".join([page.extract_text() + "\n" for page in pdf_reader.pages])
                     prompt_parts[0] = f"{prompt}\n\n[USER UPLOADED PDF CONTENT]:\n{pdf_text}"
                     file_tag = " [📄 PDF Attached]"
+                elif 'image' in header.lower():
+                    try:
+                        img = Image.open(io.BytesIO(file_data))
+                        prompt_parts.append(img)
+                        file_tag = " [📎 Image Attached]"
+                    except Exception:
+                        return "[SYS_ERROR] The uploaded image file is corrupted or unsupported."
                 else:
-                    img = Image.open(io.BytesIO(file_data))
-                    prompt_parts.append(img)
-                    file_tag = " [📎 Image Attached]"
+                    return "[SYS_ERROR] File type rejected. APEX currently only accepts Images and PDFs."
                 
         except Exception as e:
             return f"[SYS_ERROR] Neural engine instantiation failed: {str(e)}"
