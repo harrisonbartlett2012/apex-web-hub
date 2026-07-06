@@ -18,7 +18,7 @@ user_requests = {}
 MAX_MESSAGES_PER_MINUTE = 10
 
 # --- THE VIP LOUNGE: MASTER PASSWORD ---
-MASTER_ACCESS_CODE = "APEX2026"
+MASTER_ACCESS_CODE = "APEXWEB"
 
 def check_rate_limit(sid):
     current_time = time.time()
