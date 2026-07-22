@@ -1,5 +1,4 @@
-from flask import Flask, render_template, request, session, jsonify, redirect
-from flask_cors import CORS
+from flask import Flask, render_template, request, session, jsonify
 from flask_socketio import SocketIO, emit, disconnect
 import logging
 import time
@@ -7,11 +6,6 @@ import datetime
 from apex_engine import ApexEngine
 
 app = Flask(__name__)
-
-# --- THE CORS UPGRADE ---
-# This allows your mobile app to talk to the server
-CORS(app) 
-
 app.config['SECRET_KEY'] = 'apex_super_secret_key_2026'
 app.config['MAX_CONTENT_LENGTH'] = 15 * 1024 * 1024 
 
@@ -25,8 +19,7 @@ active_connections = set()
 MAX_MESSAGES_PER_MINUTE = 10
 BOOT_TIME = datetime.datetime.now()
 
-# --- PASSWORDS ---
-MASTER_ACCESS_CODE = "APEXWEB"
+# --- ADMIN PASSWORD ONLY (Front door is unlocked) ---
 ADMIN_ACCESS_CODE = "APEXADMIN"
 
 def check_rate_limit(sid):
@@ -42,20 +35,8 @@ def check_rate_limit(sid):
 # --- PUBLIC ROUTES ---
 @app.route('/')
 def index():
-    return render_template('index.html', logged_in=session.get('authenticated', False))
-
-@app.route('/authenticate', methods=['POST'])
-def authenticate():
-    data = request.get_json()
-    if data and data.get('passcode') == MASTER_ACCESS_CODE:
-        session['authenticated'] = True
-        return jsonify({'success': True})
-    return jsonify({'success': False}), 401
-
-@app.route('/logout', methods=['POST'])
-def logout():
-    session.pop('authenticated', None)
-    return jsonify({'success': True})
+    # Renders the public chat without passing a login variable
+    return render_template('index.html')
 
 # --- ADMIN COMMAND CENTER ROUTES ---
 @app.route('/admin')
@@ -87,11 +68,8 @@ def admin_stats():
 # --- WEBSOCKET LOGIC ---
 @socketio.on('connect')
 def handle_connect():
-    if not session.get('authenticated'):
-        disconnect()
-        return
     active_connections.add(request.sid)
-    logging.info(f"New authenticated client connected: {request.sid}")
+    logging.info(f"New public client connected: {request.sid}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -103,10 +81,6 @@ def handle_disconnect():
 
 @socketio.on('user_message')
 def handle_user_message(data):
-    if not session.get('authenticated'):
-        disconnect()
-        return
-
     prompt = data.get('command', '').strip()
     file_data = data.get('file_data', None)
     persona = data.get('persona', 'Synthesizer')
