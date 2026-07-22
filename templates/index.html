@@ -10,20 +10,6 @@
 </head>
 <body class="bg-base-300 h-screen flex flex-col p-4 md:p-8 font-mono relative overflow-hidden">
 
-    <div id="auth-overlay" class="absolute inset-0 bg-base-300/95 backdrop-blur-md z-50 flex items-center justify-center {{ 'hidden' if logged_in else '' }}">
-        <div class="card w-96 bg-base-100 shadow-2xl border border-primary/20">
-            <div class="card-body items-center text-center">
-                <h2 class="card-title text-primary tracking-widest mb-4">SYSTEM LOCKED</h2>
-                <p class="text-sm opacity-70 mb-4">Enter Master Access Code to initialize APEX.</p>
-                <input type="password" id="auth-input" placeholder="••••••••" class="input input-bordered input-primary w-full max-w-xs text-center tracking-widest" />
-                <div class="card-actions mt-6 w-full">
-                    <button onclick="attemptLogin()" class="btn btn-primary w-full tracking-widest">DECRYPT</button>
-                </div>
-                <p id="auth-error" class="text-error text-xs mt-4 hidden">INVALID CREDENTIALS</p>
-            </div>
-        </div>
-    </div>
-
     <header class="flex justify-between items-center border-b border-primary/30 pb-4 mb-4">
         <div class="flex items-center gap-2">
             <span class="loading loading-ring loading-md text-primary"></span>
@@ -41,8 +27,6 @@
             <button onclick="exportChat()" class="btn btn-xs btn-outline btn-info ml-2" title="Download Session Archive">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             </button>
-
-            <button onclick="logout()" class="btn btn-xs btn-outline btn-error ml-2" title="Lock Terminal">LOCK</button>
         </div>
     </header>
 
@@ -66,38 +50,12 @@
 
     <script>
         let socket;
-        const isLoggedIn = {{ 'true' if logged_in else 'false' }};
         
-        if (isLoggedIn) {
+        // Instantly boots the system on page load
+        document.addEventListener("DOMContentLoaded", () => {
             initializeSystem();
-        }
-
-        async function attemptLogin() {
-            const code = document.getElementById('auth-input').value;
-            const res = await fetch('/authenticate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ passcode: code })
-            });
-            
-            if (res.ok) {
-                document.getElementById('auth-overlay').classList.add('hidden');
-                initializeSystem();
-            } else {
-                document.getElementById('auth-error').classList.remove('hidden');
-            }
-        }
-
-        async function logout() {
-            await fetch('/logout', { method: 'POST' });
-            window.location.reload();
-        }
-
-        document.getElementById('auth-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') attemptLogin();
         });
 
-        // --- NEW: THE ARCHIVIST EXPORT LOGIC ---
         function exportChat() {
             const chatElements = document.querySelectorAll('.chat');
             if (chatElements.length === 0) return;
@@ -134,7 +92,7 @@
                 statusBadge.innerText = "ONLINE";
                 statusBadge.classList.replace('badge-warning', 'badge-success');
                 statusBadge.classList.replace('badge-error', 'badge-success');
-                if (isFirstConnect) { appendMessage("APEX", "[SYSTEM ONLINE] Security protocols passed. Core Engine ready."); isFirstConnect = false; }
+                if (isFirstConnect) { appendMessage("APEX", "[SYSTEM ONLINE] Public Gateway Open. Core Engine ready."); isFirstConnect = false; }
             });
 
             socket.on('disconnect', () => {
