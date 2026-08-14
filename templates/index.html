@@ -16,6 +16,27 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+
+    <!-- Marked.js for Markdown Parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- Custom CSS to restore Tailwind's reset on Markdown elements -->
+    <style>
+        .markdown-content p { margin-bottom: 0.75rem; }
+        .markdown-content p:last-child { margin-bottom: 0; }
+        .markdown-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+        .markdown-content ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+        .markdown-content li { margin-bottom: 0.25rem; }
+        .markdown-content strong { font-weight: 700; color: inherit; }
+        .markdown-content em { font-style: italic; }
+        .markdown-content code { background-color: rgba(0,0,0,0.2); padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.9em; }
+        .markdown-content pre { background-color: rgba(0,0,0,0.3); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 0.75rem; }
+        .markdown-content pre code { background-color: transparent; padding: 0; font-size: 0.85em; }
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 { font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; }
+        .markdown-content h1 { font-size: 1.5em; }
+        .markdown-content h2 { font-size: 1.25em; }
+        .markdown-content h3 { font-size: 1.1em; }
+    </style>
 </head>
 <body class="bg-base-300 h-[100dvh] flex flex-col p-4 md:p-8 font-mono relative overflow-hidden">
 
@@ -61,6 +82,12 @@
 
     <script>
         let socket;
+
+        // Configure Marked.js to format line breaks automatically
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
         
         // Instantly boots the system on page load
         document.addEventListener("DOMContentLoaded", () => {
@@ -77,6 +104,7 @@
             
             chatElements.forEach(chat => {
                 const header = chat.querySelector('.chat-header').innerText;
+                // Grab the raw text instead of HTML for a cleaner export
                 const body = chat.querySelector('.chat-bubble').innerText;
                 logText += `[${header}]\n${body}\n\n`;
             });
@@ -119,11 +147,14 @@
                 msgDiv.className = `chat ${isUser ? 'chat-end' : 'chat-start'}`;
                 const bubbleColor = isUser ? 'chat-bubble-neutral' : 'chat-bubble-primary';
                 
-                // Inject the text
-                msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1">${sender}</div><div class="chat-bubble ${bubbleColor} shadow-md" style="overflow-x: auto;">${text.replace(/\n/g, '<br>')}</div>`;
+                // Parse the text into clean HTML using Marked.js
+                const parsedText = marked.parse(text);
+                
+                // Inject the formatted HTML and add the 'markdown-content' class for custom CSS
+                msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1">${sender}</div><div class="chat-bubble ${bubbleColor} shadow-md markdown-content" style="overflow-x: auto;">${parsedText}</div>`;
                 chatWindow.appendChild(msgDiv);
                 
-                // KaTeX: Auto-render math in the newly created message bubble
+                // KaTeX: Auto-render math in the newly created message bubble AFTER Markdown processes it
                 if (window.renderMathInElement) {
                     renderMathInElement(msgDiv, {
                         delimiters: [
