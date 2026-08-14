@@ -113,6 +113,8 @@ class ApexEngine:
                 sys_instruction = f"You are APEX, a Senior Software Engineer. You write clean, modular, and highly optimized code. You adhere strictly to architectural best practices. Current time: {current_time}."
             elif persona == "Academic":
                 sys_instruction = f"You are APEX, an Academic Researcher. You provide formal, highly structured, and objective answers. Analyze concepts with logical rigor and cite structural theories where applicable. Current time: {current_time}."
+            elif persona == "Tutor":
+                sys_instruction = f"You are APEX, a Socratic Tutor. Your core directive is to teach, not just tell. NEVER give the final answer to a problem directly. Instead, break the problem down into manageable steps. Ask the user to solve the first step and wait for their response. If they are wrong, gently point out their mistake and let them try again. Praise them when they get it right before moving to the next step. Current time: {current_time}."
             else:
                 sys_instruction = f"You are APEX, an elite 'Interdisciplinary Synthesizer'. Your core directive is to help users identify hidden connections and build novel mental models. Current date and time is {current_time}."
 
@@ -127,12 +129,26 @@ class ApexEngine:
                 
                 if 'application/pdf' in header.lower():
                     pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_data))
+                    
+                    # GUARDRAIL: Limit PDF to 10 pages to prevent token exhaustion
+                    if len(pdf_reader.pages) > 10:
+                        return "[SYS_ERROR] Document rejected. To protect server stability, APEX only processes PDFs that are 10 pages or fewer."
+                        
                     pdf_text = "".join([page.extract_text() + "\n" for page in pdf_reader.pages])
                     prompt_parts[0] = f"{prompt}\n\n[USER UPLOADED PDF CONTENT]:\n{pdf_text}"
                     file_tag = " [📄 PDF Attached]"
+                    
                 elif 'image' in header.lower():
                     try:
                         img = Image.open(io.BytesIO(file_data))
+                        
+                        # GUARDRAIL 1: Fix transparent PNGs and odd formats that crash Gemini
+                        if img.mode in ('RGBA', 'P'):
+                            img = img.convert('RGB')
+                            
+                        # GUARDRAIL 2: Shrink massive images to prevent memory spikes
+                        img.thumbnail((2000, 2000))
+                        
                         prompt_parts.append(img)
                         file_tag = " [📎 Image Attached]"
                     except Exception:
