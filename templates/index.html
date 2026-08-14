@@ -146,8 +146,19 @@
         function previewFile() {
             const file = document.getElementById('file-upload').files[0];
             if (!file) return;
+            
+            // SECURITY SHIELD: Block files larger than 5MB (5 * 1024 * 1024 bytes)
+            if (file.size > 5 * 1024 * 1024) {
+                alert("File too large! Please keep uploads under 5MB to maintain server stability.");
+                document.getElementById('file-upload').value = ''; // Clear the input
+                return;
+            }
+
             const reader = new FileReader();
-            reader.onload = e => { window.currentFileData = e.target.result; document.getElementById('upload-btn').classList.replace('btn-outline', 'btn-active'); };
+            reader.onload = e => { 
+                window.currentFileData = e.target.result; 
+                document.getElementById('upload-btn').classList.replace('btn-outline', 'btn-active'); 
+            };
             reader.readAsDataURL(file);
         }
 
