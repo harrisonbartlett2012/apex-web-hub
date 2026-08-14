@@ -48,7 +48,6 @@ class ApexEngine:
         except Exception as e:
             logging.warning(f"Auto-detect failed, using fallback. {e}")
 
-        # --- HARD-LOCKED COMPUTE QUOTA ---
         self.max_session_calls = 1500
         self.current_session_calls = 0
         self.guardrail_active = False
@@ -96,10 +95,14 @@ class ApexEngine:
             return False, "[SYS_LOCKDOWN] API call limit reached."
         return True, "OK"
 
-    def generate_response(self, prompt, file_b64=None, persona="Synthesizer"):
+    def generate_response_stream(self, prompt, file_b64=None, persona="Synthesizer"):
         safe_to_run, lockdown_msg = self.check_guardrails()
-        if not safe_to_run: return lockdown_msg
-        if not self.api_key or self.api_key == "Paste_Key_Here": return "[SYS_ERROR] Missing Gemini API Key."
+        if not safe_to_run: 
+            yield lockdown_msg
+            return
+        if not self.api_key or self.api_key == "Paste_Key_Here": 
+            yield "[SYS_ERROR] Missing Gemini API Key."
+            return
 
         self.current_session_calls += 1
 
@@ -107,7 +110,6 @@ class ApexEngine:
             recent_memory = self.session_memory[-20:] if len(self.session_memory) > 20 else self.session_memory
             gemini_history = [{"role": "user" if m['role'] == "user" else "model", "parts": [m['content']]} for m in recent_memory]
             
-            # --- DYNAMIC PERSONA ROUTING ---
             current_time = datetime.now().strftime('%A, %B %d, %Y at %I:%M %p')
             if persona == "Engineer":
                 sys_instruction = f"You are APEX, a Senior Software Engineer. You write clean, modular, and highly optimized code. You adhere strictly to architectural best practices. Current time: {current_time}."
@@ -120,7 +122,6 @@ class ApexEngine:
 
             model = genai.GenerativeModel(self.current_model, system_instruction=sys_instruction)
             
-            # --- COMMAND INTERCEPTORS ---
             internal_prompt = prompt
             
             if prompt.lower().startswith("/quiz"):
@@ -139,11 +140,9 @@ class ApexEngine:
                 
                 if 'application/pdf' in header.lower():
                     pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_data))
-                    
-                    # GUARDRAIL: Limit PDF to 10 pages to prevent token exhaustion
                     if len(pdf_reader.pages) > 10:
-                        return "[SYS_ERROR] Document rejected. To protect server stability, APEX only processes PDFs that are 10 pages or fewer."
-                        
+                        yield "[SYS_ERROR] Document rejected. To protect server stability, APEX only processes PDFs that are 10 pages or fewer."
+                        return
                     pdf_text = "".join([page.extract_text() + "\n" for page in pdf_reader.pages])
                     prompt_parts[0] = f"{internal_prompt}\n\n[USER UPLOADED PDF CONTENT]:\n{pdf_text}"
                     file_tag = " [📄 PDF Attached]"
@@ -151,23 +150,23 @@ class ApexEngine:
                 elif 'image' in header.lower():
                     try:
                         img = Image.open(io.BytesIO(file_data))
-                        
-                        # GUARDRAIL 1: Fix transparent PNGs and odd formats that crash Gemini
                         if img.mode in ('RGBA', 'P'):
                             img = img.convert('RGB')
-                            
-                        # GUARDRAIL 2: Shrink massive images to prevent memory spikes
                         img.thumbnail((2000, 2000))
-                        
                         prompt_parts.append(img)
                         file_tag = " [📎 Image Attached]"
                     except Exception:
-                        return "[SYS_ERROR] The uploaded image file is corrupted or unsupported."
+                        yield "[SYS_ERROR] The uploaded image file is corrupted or unsupported."
+                        return
                 else:
-                    return "[SYS_ERROR] File type rejected. APEX currently only accepts Images and PDFs."
+                    yield "[SYS_ERROR] File type rejected. APEX currently only accepts Images and PDFs."
+                    return
                 
         except Exception as e:
-            return f"[SYS_ERROR] Neural engine instantiation failed: {str(e)}"
+            yield f"[SYS_ERROR] Neural engine instantiation failed: {str(e)}"
+            return
+
+        save_prompt = prompt + file_tag
 
         # SEARCH INTERCEPTOR
         if prompt.lower().startswith("/search "):
@@ -181,24 +180,47 @@ class ApexEngine:
                         live_context += f"\nDeep Read: {' '.join([p.get_text() for p in soup.find_all('p')[:4]])}\n"
                     except:
                         live_context += f"\nSnippet: {r.get('body', '')}\n"
-                response = model.generate_content(f"Answer using live results:\n{live_context}\n\nQUERY: {search_query}")
-                reply = response.text
-                apex_database.save_chat('user', prompt); apex_database.save_chat('assistant', reply)
-                self.session_memory.extend([{'role': 'user', 'content': prompt}, {'role': 'assistant', 'content': reply}])
-                return f"[LIVE WEB DATABANK ACCESSED]\n{reply}"
-            except Exception as e: return f"[SYS_ERROR] Web connection failed: {str(e)}"
+                
+                yield "[LIVE WEB DATABANK ACCESSED]\n\n"
+                
+                search_response = model.generate_content(f"Answer using live results:\n{live_context}\n\nQUERY: {search_query}", stream=True)
+                
+                full_reply = "[LIVE WEB DATABANK ACCESSED]\n\n"
+                for chunk in search_response:
+                    try:
+                        text_chunk = chunk.text
+                        if text_chunk:
+                            full_reply += text_chunk
+                            yield text_chunk
+                    except Exception:
+                        pass
+                        
+                apex_database.save_chat('user', save_prompt)
+                apex_database.save_chat('assistant', full_reply)
+                self.session_memory.extend([{'role': 'user', 'content': save_prompt}, {'role': 'assistant', 'content': full_reply}])
+                return
+            except Exception as e: 
+                yield f"[SYS_ERROR] Web connection failed: {str(e)}"
+                return
 
-        # Save the original user prompt (e.g. "/quiz") to the database, not our secret intercepted prompt
-        save_prompt = prompt + file_tag
         apex_database.save_chat('user', save_prompt)
         self.session_memory.append({'role': 'user', 'content': save_prompt})
         gemini_history.append({"role": "user", "parts": prompt_parts})
         
         try:
-            response = model.generate_content(gemini_history)
-            reply = response.text
-            apex_database.save_chat('assistant', reply)
-            self.session_memory.append({'role': 'assistant', 'content': reply})
-            return reply
+            # The core streaming engine
+            response = model.generate_content(gemini_history, stream=True)
+            full_reply = ""
+            for chunk in response:
+                try:
+                    text_chunk = chunk.text
+                    if text_chunk:
+                        full_reply += text_chunk
+                        yield text_chunk
+                except Exception:
+                    pass
+            
+            apex_database.save_chat('assistant', full_reply)
+            self.session_memory.append({'role': 'assistant', 'content': full_reply})
         except Exception as e:
-            return f"[SYS_ERROR] Backend failure: {str(e)}"
+            yield f"[SYS_ERROR] Backend failure: {str(e)}"
