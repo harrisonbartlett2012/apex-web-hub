@@ -120,7 +120,17 @@ class ApexEngine:
 
             model = genai.GenerativeModel(self.current_model, system_instruction=sys_instruction)
             
-            prompt_parts = [prompt]
+            # --- COMMAND INTERCEPTORS ---
+            internal_prompt = prompt
+            
+            if prompt.lower().startswith("/quiz"):
+                quiz_topic = prompt[5:].strip()
+                if quiz_topic:
+                    internal_prompt = f"Generate a challenging 3-question quiz about {quiz_topic}. DO NOT provide the answers yet. Ask the questions clearly using numbered lists, and wait for me to submit my answers for grading."
+                else:
+                    internal_prompt = "Generate a challenging 3-question quiz based on the document I just uploaded or our current topic. DO NOT provide the answers yet. Ask the questions clearly using numbered lists, and wait for me to submit my answers for grading."
+
+            prompt_parts = [internal_prompt]
             file_tag = ""
             
             if file_b64:
@@ -135,7 +145,7 @@ class ApexEngine:
                         return "[SYS_ERROR] Document rejected. To protect server stability, APEX only processes PDFs that are 10 pages or fewer."
                         
                     pdf_text = "".join([page.extract_text() + "\n" for page in pdf_reader.pages])
-                    prompt_parts[0] = f"{prompt}\n\n[USER UPLOADED PDF CONTENT]:\n{pdf_text}"
+                    prompt_parts[0] = f"{internal_prompt}\n\n[USER UPLOADED PDF CONTENT]:\n{pdf_text}"
                     file_tag = " [📄 PDF Attached]"
                     
                 elif 'image' in header.lower():
@@ -159,6 +169,7 @@ class ApexEngine:
         except Exception as e:
             return f"[SYS_ERROR] Neural engine instantiation failed: {str(e)}"
 
+        # SEARCH INTERCEPTOR
         if prompt.lower().startswith("/search "):
             search_query = prompt[8:].strip()
             try:
@@ -177,6 +188,7 @@ class ApexEngine:
                 return f"[LIVE WEB DATABANK ACCESSED]\n{reply}"
             except Exception as e: return f"[SYS_ERROR] Web connection failed: {str(e)}"
 
+        # Save the original user prompt (e.g. "/quiz") to the database, not our secret intercepted prompt
         save_prompt = prompt + file_tag
         apex_database.save_chat('user', save_prompt)
         self.session_memory.append({'role': 'user', 'content': save_prompt})
