@@ -4,9 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>APEX // Cloud Gateway</title>
+    
+    <!-- CSS Frameworks -->
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.2/dist/full.min.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- WebSockets -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+
+    <!-- KaTeX for Math Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-base-300 h-[100dvh] flex flex-col p-4 md:p-8 font-mono relative overflow-hidden">
 
@@ -23,6 +32,7 @@
                 <option value="Synthesizer">Synthesizer</option>
                 <option value="Engineer">Software Engineer</option>
                 <option value="Academic">Academic Researcher</option>
+                <option value="Tutor">Socratic Tutor</option>
             </select>
             
             <button onclick="exportChat()" class="btn btn-xs btn-outline btn-info ml-2" title="Download Session Archive">
@@ -108,8 +118,24 @@
                 const isUser = sender === "You";
                 msgDiv.className = `chat ${isUser ? 'chat-end' : 'chat-start'}`;
                 const bubbleColor = isUser ? 'chat-bubble-neutral' : 'chat-bubble-primary';
-                msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1">${sender}</div><div class="chat-bubble ${bubbleColor} shadow-md">${text.replace(/\n/g, '<br>')}</div>`;
+                
+                // Inject the text
+                msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1">${sender}</div><div class="chat-bubble ${bubbleColor} shadow-md" style="overflow-x: auto;">${text.replace(/\n/g, '<br>')}</div>`;
                 chatWindow.appendChild(msgDiv);
+                
+                // KaTeX: Auto-render math in the newly created message bubble
+                if (window.renderMathInElement) {
+                    renderMathInElement(msgDiv, {
+                        delimiters: [
+                            {left: '$$', right: '$$', display: true},
+                            {left: '$', right: '$', display: false},
+                            {left: '\\(', right: '\\)', display: false},
+                            {left: '\\[', right: '\\]', display: true}
+                        ],
+                        throwOnError: false
+                    });
+                }
+
                 if (!isUser) msgDiv.scrollIntoView({ behavior: "smooth", block: "start" });
                 else chatWindow.scrollTop = chatWindow.scrollHeight;
             }
@@ -147,10 +173,10 @@
             const file = document.getElementById('file-upload').files[0];
             if (!file) return;
             
-            // SECURITY SHIELD: Block files larger than 5MB (5 * 1024 * 1024 bytes)
+            // SECURITY SHIELD: Block files larger than 5MB
             if (file.size > 5 * 1024 * 1024) {
                 alert("File too large! Please keep uploads under 5MB to maintain server stability.");
-                document.getElementById('file-upload').value = ''; // Clear the input
+                document.getElementById('file-upload').value = ''; 
                 return;
             }
 
