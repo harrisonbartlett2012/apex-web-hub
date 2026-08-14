@@ -19,7 +19,6 @@ active_connections = set()
 MAX_MESSAGES_PER_MINUTE = 10
 BOOT_TIME = datetime.datetime.now()
 
-# --- ADMIN PASSWORD ONLY (Front door is unlocked) ---
 ADMIN_ACCESS_CODE = "APEXADMIN"
 
 def check_rate_limit(sid):
@@ -35,7 +34,6 @@ def check_rate_limit(sid):
 # --- PUBLIC ROUTES ---
 @app.route('/')
 def index():
-    # Renders the public chat without passing a login variable
     return render_template('index.html')
 
 # --- ADMIN COMMAND CENTER ROUTES ---
@@ -79,6 +77,12 @@ def handle_disconnect():
     if sid in active_connections:
         active_connections.remove(sid)
 
+@socketio.on('clear_session')
+def handle_clear_session():
+    # Instantly wipes the sliding memory window for a fresh start
+    engine.session_memory = []
+    logging.info(f"Session memory wiped by {request.sid}")
+
 @socketio.on('user_message')
 def handle_user_message(data):
     prompt = data.get('command', '').strip()
@@ -98,8 +102,20 @@ def handle_user_message(data):
     
     def background_ai_task(user_prompt, incoming_file, user_persona, sid):
         try:
-            reply = engine.generate_response(user_prompt, incoming_file, user_persona)
-            socketio.emit('ai_response', {'sender': f'APEX [{user_persona}]', 'text': reply}, to=sid)
+            # Create a unique ID for this specific message stream
+            msg_id = str(time.time()).replace('.', '')
+            sender_label = f'APEX [{user_persona}]'
+            
+            # Tell the front-end to create an empty chat bubble
+            socketio.emit('ai_response_start', {'sender': sender_label, 'msg_id': msg_id}, to=sid)
+            
+            # Stream the text chunks as Gemini generates them
+            for chunk in engine.generate_response_stream(user_prompt, incoming_file, user_persona):
+                socketio.emit('ai_response_chunk', {'msg_id': msg_id, 'chunk': chunk}, to=sid)
+                
+            # Tell the front-end the stream is done so it can render the math formulas
+            socketio.emit('ai_response_done', {'msg_id': msg_id}, to=sid)
+            
         except Exception as e:
             socketio.emit('ai_response', {'sender': 'APEX', 'text': f"[SYS_ERROR] Web Gateway Failure: {str(e)}"}, to=sid)
 

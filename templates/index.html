@@ -5,11 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>APEX // Cloud Gateway</title>
     
-    <!-- CSS Frameworks -->
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.2/dist/full.min.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- WebSockets -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
 
     <!-- KaTeX for Math Rendering -->
@@ -20,7 +17,6 @@
     <!-- Marked.js for Markdown Parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
-    <!-- Custom CSS to restore Tailwind's reset on Markdown elements -->
     <style>
         .markdown-content p { margin-bottom: 0.75rem; }
         .markdown-content p:last-child { margin-bottom: 0; }
@@ -38,7 +34,7 @@
         .markdown-content h3 { font-size: 1.1em; }
     </style>
 </head>
-<body class="bg-base-300 h-[100dvh] flex flex-col p-4 md:p-8 font-mono relative overflow-hidden">
+<body class="bg-base-300 h-[100dvh] flex flex-col p-4 md:p-8 font-mono relative overflow-hidden transition-colors duration-300">
 
     <!-- MAIN CHAT INTERFACE -->
     <header class="flex justify-between items-center border-b border-primary/30 pb-4 mb-4">
@@ -56,6 +52,11 @@
                 <option value="Tutor">Socratic Tutor</option>
             </select>
             
+            <!-- NEW QUALITY OF LIFE BUTTONS -->
+            <button onclick="toggleTheme()" class="btn btn-xs btn-outline btn-warning ml-2" id="theme-toggle" title="Toggle Day/Night Mode">☀️</button>
+            <button onclick="clearSession()" class="btn btn-xs btn-outline btn-error ml-2" title="Wipe Board & Start New Session">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </button>
             <button onclick="exportChat()" class="btn btn-xs btn-outline btn-info ml-2" title="Download Session Archive">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             </button>
@@ -82,33 +83,61 @@
 
     <script>
         let socket;
+        let activeStreams = {};
 
-        // Configure Marked.js to format line breaks automatically
-        marked.setOptions({
-            breaks: true,
-            gfm: true
-        });
+        marked.setOptions({ breaks: true, gfm: true });
         
-        // Instantly boots the system on page load
         document.addEventListener("DOMContentLoaded", () => {
             initializeSystem();
         });
 
+        // DAY/NIGHT TOGGLE
+        function toggleTheme() {
+            const html = document.documentElement;
+            const toggleBtn = document.getElementById('theme-toggle');
+            if (html.getAttribute('data-theme') === 'dark') {
+                html.setAttribute('data-theme', 'light');
+                toggleBtn.innerText = '🌙';
+            } else {
+                html.setAttribute('data-theme', 'dark');
+                toggleBtn.innerText = '☀️';
+            }
+        }
+
+        // WIPE BOARD LOGIC
+        function clearSession() {
+            socket.emit('clear_session');
+            const chatWindow = document.getElementById('chat-window');
+            chatWindow.innerHTML = '';
+            
+            // Post a tiny system notification
+            const sysMsg = document.createElement('div');
+            sysMsg.className = "text-center text-xs opacity-50 my-4 text-warning";
+            sysMsg.innerText = "[ BOARD WIPED. MEMORY CLEARED. ]";
+            chatWindow.appendChild(sysMsg);
+        }
+
+        // ONE-CLICK COPY LOGIC
+        window.copyToClipboard = function(msgId, btnElement) {
+            let textToCopy = "";
+            if (activeStreams[msgId]) {
+                textToCopy = activeStreams[msgId].rawText;
+            }
+            navigator.clipboard.writeText(textToCopy);
+            const originalText = btnElement.innerText;
+            btnElement.innerText = "COPIED!";
+            setTimeout(() => { btnElement.innerText = originalText; }, 2000);
+        }
+
         function exportChat() {
             const chatElements = document.querySelectorAll('.chat');
             if (chatElements.length === 0) return;
-            
-            let logText = "APEX // SECURE CHAT ARCHIVE\n";
-            logText += "Generated: " + new Date().toLocaleString() + "\n";
-            logText += "=========================================\n\n";
-            
+            let logText = "APEX // SECURE CHAT ARCHIVE\nGenerated: " + new Date().toLocaleString() + "\n=========================================\n\n";
             chatElements.forEach(chat => {
-                const header = chat.querySelector('.chat-header').innerText;
-                // Grab the raw text instead of HTML for a cleaner export
+                const header = chat.querySelector('.chat-header').innerText.replace('COPY', '').replace('COPIED!', '').trim();
                 const body = chat.querySelector('.chat-bubble').innerText;
                 logText += `[${header}]\n${body}\n\n`;
             });
-            
             const blob = new Blob([logText], { type: "text/plain" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -131,7 +160,13 @@
                 statusBadge.innerText = "ONLINE";
                 statusBadge.classList.replace('badge-warning', 'badge-success');
                 statusBadge.classList.replace('badge-error', 'badge-success');
-                if (isFirstConnect) { appendMessage("APEX", "[SYSTEM ONLINE] Public Gateway Open. Core Engine ready."); isFirstConnect = false; }
+                if (isFirstConnect) { 
+                    const sysMsg = document.createElement('div');
+                    sysMsg.className = "text-center text-xs opacity-50 my-4 text-success";
+                    sysMsg.innerText = "[ SYSTEM ONLINE ] Public Gateway Open. Core Engine ready.";
+                    chatWindow.appendChild(sysMsg);
+                    isFirstConnect = false; 
+                }
             });
 
             socket.on('disconnect', () => {
@@ -139,36 +174,73 @@
                 statusBadge.classList.replace('badge-success', 'badge-error');
             });
 
-            socket.on('ai_response', (data) => appendMessage(data.sender, data.text));
-
-            function appendMessage(sender, text) {
+            // Instant standard messages (Error alerts, Rate limit warnings)
+            socket.on('ai_response', (data) => {
+                const msgId = 'inst-' + Date.now();
+                activeStreams[msgId] = { rawText: data.text };
+                
                 const msgDiv = document.createElement('div');
-                const isUser = sender === "You";
-                msgDiv.className = `chat ${isUser ? 'chat-end' : 'chat-start'}`;
-                const bubbleColor = isUser ? 'chat-bubble-neutral' : 'chat-bubble-primary';
+                msgDiv.className = `chat chat-start`;
+                const parsedText = marked.parse(data.text);
                 
-                // Parse the text into clean HTML using Marked.js
-                const parsedText = marked.parse(text);
+                msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1 flex justify-between w-full pr-8 relative">
+                    <span>${data.sender}</span>
+                    <button onclick="copyToClipboard('${msgId}', this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-xs opacity-50 hover:opacity-100 uppercase tracking-widest absolute right-0">COPY</button>
+                </div>
+                <div class="chat-bubble chat-bubble-primary shadow-md markdown-content" style="overflow-x: auto;">${parsedText}</div>`;
                 
-                // Inject the formatted HTML and add the 'markdown-content' class for custom CSS
-                msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1">${sender}</div><div class="chat-bubble ${bubbleColor} shadow-md markdown-content" style="overflow-x: auto;">${parsedText}</div>`;
                 chatWindow.appendChild(msgDiv);
-                
-                // KaTeX: Auto-render math in the newly created message bubble AFTER Markdown processes it
-                if (window.renderMathInElement) {
-                    renderMathInElement(msgDiv, {
-                        delimiters: [
-                            {left: '$$', right: '$$', display: true},
-                            {left: '$', right: '$', display: false},
-                            {left: '\\(', right: '\\)', display: false},
-                            {left: '\\[', right: '\\]', display: true}
-                        ],
-                        throwOnError: false
-                    });
-                }
+                if (window.renderMathInElement) { renderMathInElement(msgDiv, { delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}, {left: '\\(', right: '\\)', display: false}, {left: '\\[', right: '\\]', display: true}], throwOnError: false }); }
+                msgDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
 
-                if (!isUser) msgDiv.scrollIntoView({ behavior: "smooth", block: "start" });
-                else chatWindow.scrollTop = chatWindow.scrollHeight;
+            // STREAMING PHASE 1: Create the empty bubble
+            socket.on('ai_response_start', (data) => {
+                activeStreams[data.msg_id] = { rawText: "" };
+                const msgDiv = document.createElement('div');
+                msgDiv.className = `chat chat-start`;
+                msgDiv.id = `msg-${data.msg_id}`;
+                
+                msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1 flex justify-between w-full pr-8 relative">
+                    <span>${data.sender}</span>
+                    <button onclick="copyToClipboard('${data.msg_id}', this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-xs opacity-50 hover:opacity-100 uppercase tracking-widest absolute right-0">COPY</button>
+                </div>
+                <div class="chat-bubble chat-bubble-primary shadow-md markdown-content" id="bubble-${data.msg_id}" style="overflow-x: auto;">
+                    <span class="loading loading-dots loading-sm"></span>
+                </div>`;
+                
+                chatWindow.appendChild(msgDiv);
+                msgDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+
+            // STREAMING PHASE 2: Typewriter text injection
+            socket.on('ai_response_chunk', (data) => {
+                if(activeStreams[data.msg_id]) {
+                    activeStreams[data.msg_id].rawText += data.chunk;
+                    const bubble = document.getElementById(`bubble-${data.msg_id}`);
+                    if (bubble) {
+                        bubble.innerHTML = marked.parse(activeStreams[data.msg_id].rawText);
+                        chatWindow.scrollTop = chatWindow.scrollHeight;
+                    }
+                }
+            });
+
+            // STREAMING PHASE 3: Render Math formulas once text is done
+            socket.on('ai_response_done', (data) => {
+                if(activeStreams[data.msg_id]) {
+                    const bubble = document.getElementById(`bubble-${data.msg_id}`);
+                    if (bubble && window.renderMathInElement) {
+                        renderMathInElement(bubble, { delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}, {left: '\\(', right: '\\)', display: false}, {left: '\\[', right: '\\]', display: true}], throwOnError: false });
+                    }
+                }
+            });
+
+            function appendUserMessage(text) {
+                const msgDiv = document.createElement('div');
+                msgDiv.className = `chat chat-end`;
+                msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1">You</div><div class="chat-bubble chat-bubble-neutral shadow-md" style="overflow-x: auto;">${text.replace(/\n/g, '<br>')}</div>`;
+                chatWindow.appendChild(msgDiv);
+                chatWindow.scrollTop = chatWindow.scrollHeight;
             }
 
             window.sendCommand = function() {
@@ -182,7 +254,7 @@
                     displayMsg += window.currentFileData.startsWith('data:application/pdf') ? " [📄 PDF Attached]" : " [📎 Image Attached]";
                 }
                 
-                appendMessage("You", displayMsg);
+                appendUserMessage(displayMsg);
                 
                 socket.emit('user_message', { 
                     command: text, 
@@ -203,14 +275,11 @@
         function previewFile() {
             const file = document.getElementById('file-upload').files[0];
             if (!file) return;
-            
-            // SECURITY SHIELD: Block files larger than 5MB
             if (file.size > 5 * 1024 * 1024) {
                 alert("File too large! Please keep uploads under 5MB to maintain server stability.");
                 document.getElementById('file-upload').value = ''; 
                 return;
             }
-
             const reader = new FileReader();
             reader.onload = e => { 
                 window.currentFileData = e.target.result; 
