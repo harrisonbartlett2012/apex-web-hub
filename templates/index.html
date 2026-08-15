@@ -52,7 +52,7 @@
                 <option value="Tutor">Socratic Tutor</option>
             </select>
             
-            <!-- NEW QUALITY OF LIFE BUTTONS -->
+            <!-- QUALITY OF LIFE BUTTONS -->
             <button onclick="toggleTheme()" class="btn btn-xs btn-outline btn-warning ml-2" id="theme-toggle" title="Toggle Day/Night Mode">☀️</button>
             <button onclick="clearSession()" class="btn btn-xs btn-outline btn-error ml-2" title="Wipe Board & Start New Session">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -65,33 +65,82 @@
 
     <main id="chat-window" class="flex-1 bg-base-100 rounded-box p-4 overflow-y-auto mb-4 space-y-4 shadow-xl scroll-smooth"></main>
 
-    <footer class="flex gap-2 items-center">
+    <footer class="flex gap-2 items-center relative">
+        
+        <!-- UI OVERLAYS (Attachment Preview & Command Menu) -->
+        <div class="absolute bottom-[100%] left-0 pb-2 w-full flex flex-col items-start gap-2 pointer-events-none z-50">
+            
+            <!-- Slash Command Menu -->
+            <div id="slash-menu" class="hidden pointer-events-auto bg-base-200 border border-primary/30 rounded-box shadow-xl w-64 flex-col overflow-hidden transition-all ml-16">
+                <button onclick="useSlashCommand('/quiz ')" class="text-left px-4 py-2 hover:bg-primary/20 text-sm focus:outline-none"><span class="font-bold text-primary">/quiz</span> [topic]<br><span class="text-xs opacity-70">Generate a study test</span></button>
+                <button onclick="useSlashCommand('/search ')" class="text-left px-4 py-2 hover:bg-primary/20 text-sm border-t border-base-300 focus:outline-none"><span class="font-bold text-info">/search</span> [query]<br><span class="text-xs opacity-70">Live web databank</span></button>
+            </div>
+            
+            <!-- Attachment Preview Box -->
+            <div id="attachment-preview" class="hidden pointer-events-auto bg-base-200 p-2 rounded-lg border border-primary/50 flex items-center gap-3 shadow-lg max-w-xs">
+                <div class="h-10 w-10 flex-shrink-0 rounded overflow-hidden bg-base-300 flex items-center justify-center">
+                    <img id="preview-img" class="h-full w-full object-cover hidden" />
+                    <span id="preview-pdf" class="text-error font-bold text-xs hidden">PDF</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p id="preview-name" class="text-xs font-bold truncate">filename.pdf</p>
+                    <p id="preview-size" class="text-[10px] opacity-70">1.2 MB</p>
+                </div>
+                <button onclick="clearAttachment()" class="btn btn-xs btn-circle btn-ghost text-error" title="Remove Attachment">✕</button>
+            </div>
+        </div>
+
         <input type="file" id="file-upload" accept="image/*,.pdf" class="hidden" onchange="previewFile()" />
-        <button onclick="document.getElementById('file-upload').click()" class="btn btn-square btn-outline btn-primary" id="upload-btn" title="Upload PDF or Image">
+        <button onclick="document.getElementById('file-upload').click()" class="btn btn-square btn-outline btn-primary z-10" id="upload-btn" title="Upload PDF or Image">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
         </button>
 
-        <button onclick="toggleVoiceDictation()" class="btn btn-square btn-outline btn-secondary" id="voice-btn" title="Toggle Voice Dictation">
+        <button onclick="toggleVoiceDictation()" class="btn btn-square btn-outline btn-secondary z-10" id="voice-btn" title="Toggle Voice Dictation">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" id="mic-icon">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
         </button>
 
-        <input type="text" id="cmd-input" placeholder="Enter query, upload data, or click microphone..." class="input input-bordered input-primary flex-1 focus:outline-none" />
-        <button onclick="sendCommand()" class="btn btn-primary text-primary-content tracking-widest">EXECUTE</button>
+        <input type="text" id="cmd-input" placeholder="Enter query, type '/' for commands, or upload data..." autocomplete="off" class="input input-bordered input-primary flex-1 focus:outline-none z-10" />
+        <button onclick="sendCommand()" class="btn btn-primary text-primary-content tracking-widest z-10">EXECUTE</button>
     </footer>
 
     <script>
         let socket;
         let activeStreams = {};
+        
+        // Memory for the "Regenerate" button
+        let lastSentCommand = "";
+        let lastSentFile = null;
 
         marked.setOptions({ breaks: true, gfm: true });
         
         document.addEventListener("DOMContentLoaded", () => {
             initializeSystem();
+            
+            // Slash Command Listener
+            const cmdInput = document.getElementById('cmd-input');
+            const menu = document.getElementById('slash-menu');
+            
+            cmdInput.addEventListener('input', (e) => {
+                if (e.target.value.startsWith('/')) {
+                    menu.classList.remove('hidden');
+                    menu.classList.add('flex');
+                } else {
+                    menu.classList.add('hidden');
+                    menu.classList.remove('flex');
+                }
+            });
         });
 
-        // DAY/NIGHT TOGGLE
+        window.useSlashCommand = function(cmd) {
+            const cmdInput = document.getElementById('cmd-input');
+            cmdInput.value = cmd;
+            cmdInput.focus();
+            document.getElementById('slash-menu').classList.add('hidden');
+            document.getElementById('slash-menu').classList.remove('flex');
+        }
+
         function toggleTheme() {
             const html = document.documentElement;
             const toggleBtn = document.getElementById('theme-toggle');
@@ -104,20 +153,20 @@
             }
         }
 
-        // WIPE BOARD LOGIC
         function clearSession() {
             socket.emit('clear_session');
             const chatWindow = document.getElementById('chat-window');
             chatWindow.innerHTML = '';
-            
-            // Post a tiny system notification
             const sysMsg = document.createElement('div');
             sysMsg.className = "text-center text-xs opacity-50 my-4 text-warning";
             sysMsg.innerText = "[ BOARD WIPED. MEMORY CLEARED. ]";
             chatWindow.appendChild(sysMsg);
+            
+            // Wipe local memory too
+            lastSentCommand = "";
+            lastSentFile = null;
         }
 
-        // ONE-CLICK COPY LOGIC
         window.copyToClipboard = function(msgId, btnElement) {
             let textToCopy = "";
             if (activeStreams[msgId]) {
@@ -128,13 +177,37 @@
             btnElement.innerText = "COPIED!";
             setTimeout(() => { btnElement.innerText = originalText; }, 2000);
         }
+        
+        window.editPrompt = function(encodedText) {
+            document.getElementById('cmd-input').value = decodeURIComponent(encodedText);
+            document.getElementById('cmd-input').focus();
+        }
+
+        window.regenerateLast = function() {
+            if (!lastSentCommand && !lastSentFile) return;
+            
+            const selectedPersona = document.getElementById('persona-select').value;
+            
+            const sysMsg = document.createElement('div');
+            sysMsg.className = "text-center text-xs opacity-50 my-2 text-info";
+            sysMsg.innerText = "[ REGENERATING PREVIOUS RESPONSE... ]";
+            document.getElementById('chat-window').appendChild(sysMsg);
+            
+            socket.emit('user_message', { 
+                command: lastSentCommand, 
+                file_data: lastSentFile,
+                persona: selectedPersona
+            });
+        }
 
         function exportChat() {
             const chatElements = document.querySelectorAll('.chat');
             if (chatElements.length === 0) return;
             let logText = "APEX // SECURE CHAT ARCHIVE\nGenerated: " + new Date().toLocaleString() + "\n=========================================\n\n";
             chatElements.forEach(chat => {
-                const header = chat.querySelector('.chat-header').innerText.replace('COPY', '').replace('COPIED!', '').trim();
+                const header = chat.querySelector('.chat-header').innerText
+                    .replace('COPY', '').replace('COPIED!', '')
+                    .replace('EDIT', '').replace('REGENERATE', '').trim();
                 const body = chat.querySelector('.chat-bubble').innerText;
                 logText += `[${header}]\n${body}\n\n`;
             });
@@ -174,7 +247,6 @@
                 statusBadge.classList.replace('badge-success', 'badge-error');
             });
 
-            // Instant standard messages (Error alerts, Rate limit warnings)
             socket.on('ai_response', (data) => {
                 const msgId = 'inst-' + Date.now();
                 activeStreams[msgId] = { rawText: data.text };
@@ -185,7 +257,10 @@
                 
                 msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1 flex justify-between w-full pr-8 relative">
                     <span>${data.sender}</span>
-                    <button onclick="copyToClipboard('${msgId}', this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-xs opacity-50 hover:opacity-100 uppercase tracking-widest absolute right-0">COPY</button>
+                    <div class="absolute right-0 flex gap-2">
+                        <button onclick="regenerateLast()" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase tracking-widest">REGENERATE</button>
+                        <button onclick="copyToClipboard('${msgId}', this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase tracking-widest">COPY</button>
+                    </div>
                 </div>
                 <div class="chat-bubble chat-bubble-primary shadow-md markdown-content" style="overflow-x: auto;">${parsedText}</div>`;
                 
@@ -194,7 +269,6 @@
                 msgDiv.scrollIntoView({ behavior: "smooth", block: "start" });
             });
 
-            // STREAMING PHASE 1: Create the empty bubble
             socket.on('ai_response_start', (data) => {
                 activeStreams[data.msg_id] = { rawText: "" };
                 const msgDiv = document.createElement('div');
@@ -203,7 +277,10 @@
                 
                 msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1 flex justify-between w-full pr-8 relative">
                     <span>${data.sender}</span>
-                    <button onclick="copyToClipboard('${data.msg_id}', this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-xs opacity-50 hover:opacity-100 uppercase tracking-widest absolute right-0">COPY</button>
+                    <div class="absolute right-0 flex gap-2">
+                        <button onclick="regenerateLast()" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase tracking-widest">REGENERATE</button>
+                        <button onclick="copyToClipboard('${data.msg_id}', this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase tracking-widest">COPY</button>
+                    </div>
                 </div>
                 <div class="chat-bubble chat-bubble-primary shadow-md markdown-content" id="bubble-${data.msg_id}" style="overflow-x: auto;">
                     <span class="loading loading-dots loading-sm"></span>
@@ -213,7 +290,6 @@
                 msgDiv.scrollIntoView({ behavior: "smooth", block: "start" });
             });
 
-            // STREAMING PHASE 2: Typewriter text injection
             socket.on('ai_response_chunk', (data) => {
                 if(activeStreams[data.msg_id]) {
                     activeStreams[data.msg_id].rawText += data.chunk;
@@ -225,7 +301,6 @@
                 }
             });
 
-            // STREAMING PHASE 3: Render Math formulas once text is done
             socket.on('ai_response_done', (data) => {
                 if(activeStreams[data.msg_id]) {
                     const bubble = document.getElementById(`bubble-${data.msg_id}`);
@@ -235,10 +310,14 @@
                 }
             });
 
-            function appendUserMessage(text) {
+            function appendUserMessage(text, rawInput) {
                 const msgDiv = document.createElement('div');
                 msgDiv.className = `chat chat-end`;
-                msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1">You</div><div class="chat-bubble chat-bubble-neutral shadow-md" style="overflow-x: auto;">${text.replace(/\n/g, '<br>')}</div>`;
+                msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1 flex gap-2 justify-end items-center">
+                    <button onclick="editPrompt(\`${encodeURIComponent(rawInput)}\`)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase tracking-widest">EDIT</button>
+                    <span>You</span>
+                </div>
+                <div class="chat-bubble chat-bubble-neutral shadow-md" style="overflow-x: auto;">${text.replace(/\n/g, '<br>')}</div>`;
                 chatWindow.appendChild(msgDiv);
                 chatWindow.scrollTop = chatWindow.scrollHeight;
             }
@@ -249,12 +328,21 @@
                 
                 const selectedPersona = document.getElementById('persona-select').value;
                 
+                // Hide slash menu if open
+                document.getElementById('slash-menu').classList.add('hidden');
+                document.getElementById('slash-menu').classList.remove('flex');
+                
                 let displayMsg = text || "[File Uploaded]";
                 if (window.currentFileData && text) {
                     displayMsg += window.currentFileData.startsWith('data:application/pdf') ? " [📄 PDF Attached]" : " [📎 Image Attached]";
                 }
                 
-                appendUserMessage(displayMsg);
+                // Save to state for Regenerate Button
+                lastSentCommand = text;
+                lastSentFile = window.currentFileData;
+                
+                // Append bubble, passing raw text for the Edit Button
+                appendUserMessage(displayMsg, text);
                 
                 socket.emit('user_message', { 
                     command: text, 
@@ -262,9 +350,8 @@
                     persona: selectedPersona
                 });
                 
-                cmdInput.value = ''; window.currentFileData = null;
-                document.getElementById('file-upload').value = '';
-                document.getElementById('upload-btn').classList.replace('btn-active', 'btn-outline');
+                cmdInput.value = ''; 
+                clearAttachment(); // Clears preview UI and active file
             }
 
             cmdInput.addEventListener("keypress", (e) => {
@@ -283,9 +370,34 @@
             const reader = new FileReader();
             reader.onload = e => { 
                 window.currentFileData = e.target.result; 
+                
+                // Update Preview UI
+                document.getElementById('preview-name').innerText = file.name;
+                document.getElementById('preview-size').innerText = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+                
+                const img = document.getElementById('preview-img');
+                const pdf = document.getElementById('preview-pdf');
+                
+                if (file.type.includes('image')) {
+                    img.src = e.target.result;
+                    img.classList.remove('hidden');
+                    pdf.classList.add('hidden');
+                } else {
+                    img.classList.add('hidden');
+                    pdf.classList.remove('hidden');
+                }
+                
+                document.getElementById('attachment-preview').classList.remove('hidden');
                 document.getElementById('upload-btn').classList.replace('btn-outline', 'btn-active'); 
             };
             reader.readAsDataURL(file);
+        }
+
+        window.clearAttachment = function() {
+            window.currentFileData = null;
+            document.getElementById('file-upload').value = '';
+            document.getElementById('attachment-preview').classList.add('hidden');
+            document.getElementById('upload-btn').classList.replace('btn-active', 'btn-outline');
         }
 
         let recognition = null; let isListening = false;
