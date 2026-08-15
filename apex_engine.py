@@ -34,7 +34,6 @@ CONFIG_FILE = "apex_config.json"
 class ApexEngine:
     def __init__(self):
         self.config = self.load_config()
-        self.session_memory = apex_database.load_chat_history()
         self.api_key = os.environ.get("GEMINI_API_KEY", self.config.get("gemini_api_key", ""))
         genai.configure(api_key=self.api_key)
         
@@ -95,7 +94,36 @@ class ApexEngine:
             return False, "[SYS_LOCKDOWN] API call limit reached."
         return True, "OK"
 
-    def generate_response_stream(self, prompt, file_b64=None, persona="Synthesizer"):
+    # --- VECTOR LIBRARY METHODS ---
+    def get_embedding(self, text):
+        result = genai.embed_content(model="models/embedding-001", content=text)
+        return result['embedding']
+
+    def cosine_similarity(self, v1, v2):
+        dot = sum(a*b for a, b in zip(v1, v2))
+        norm1 = sum(a*a for a in v1) ** 0.5
+        norm2 = sum(b*b for b in v2) ** 0.5
+        return dot / (norm1 * norm2) if norm1 and norm2 else 0
+
+    def save_to_library(self, user_id, filename, file_b64):
+        header, encoded = file_b64.split(',', 1)
+        file_data = base64.b64decode(encoded)
+        
+        if 'application/pdf' in header.lower():
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_data))
+            text = "".join([page.extract_text() + "\n" for page in pdf_reader.pages])
+            
+            # Chunk the text
+            chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
+            for chunk in chunks:
+                if len(chunk.strip()) > 50:
+                    embedding = self.get_embedding(chunk)
+                    apex_database.save_library_chunk(user_id, filename, chunk, embedding)
+            return True, f"Successfully processed and embedded {len(chunks)} chunks into your Library."
+        return False, "Only PDFs are supported for the permanent Library."
+
+    # --- UPDATED GENERATOR (Requires user_id) ---
+    def generate_response_stream(self, user_id, prompt, file_b64=None, persona="Synthesizer"):
         safe_to_run, lockdown_msg = self.check_guardrails()
         if not safe_to_run: 
             yield lockdown_msg
@@ -107,7 +135,8 @@ class ApexEngine:
         self.current_session_calls += 1
 
         try:
-            recent_memory = self.session_memory[-20:] if len(self.session_memory) > 20 else self.session_memory
+            session_memory = apex_database.load_chat_history(user_id)
+            recent_memory = session_memory[-20:] if len(session_memory) > 20 else session_memory
             gemini_history = [{"role": "user" if m['role'] == "user" else "model", "parts": [m['content']]} for m in recent_memory]
             
             current_time = datetime.now().strftime('%A, %B %d, %Y at %I:%M %p')
@@ -127,9 +156,25 @@ class ApexEngine:
             if prompt.lower().startswith("/quiz"):
                 quiz_topic = prompt[5:].strip()
                 if quiz_topic:
-                    internal_prompt = f"Generate a challenging 3-question quiz about {quiz_topic}. DO NOT provide the answers yet. Ask the questions clearly using numbered lists, and wait for me to submit my answers for grading."
+                    internal_prompt = f"Generate a challenging 3-question quiz about {quiz_topic}. DO NOT provide the answers yet. Ask the questions clearly using numbered lists."
                 else:
-                    internal_prompt = "Generate a challenging 3-question quiz based on the document I just uploaded or our current topic. DO NOT provide the answers yet. Ask the questions clearly using numbered lists, and wait for me to submit my answers for grading."
+                    internal_prompt = "Generate a challenging 3-question quiz based on the document I just uploaded or our current topic. DO NOT provide the answers yet. Ask the questions clearly using numbered lists."
+
+            # RAG VECTOR SEARCH
+            if not file_b64 and not prompt.lower().startswith("/search"):
+                try:
+                    query_emb = self.get_embedding(internal_prompt)
+                    docs = apex_database.get_library_embeddings(user_id)
+                    if docs:
+                        scored = [(doc[0], self.cosine_similarity(query_emb, doc[1])) for doc in docs]
+                        scored.sort(key=lambda x: x[1], reverse=True)
+                        best_chunks = [s[0] for s in scored[:2] if s[1] > 0.5]
+                        
+                        if best_chunks:
+                            context = "\n\n---\n\n".join(best_chunks)
+                            internal_prompt = f"Use the following excerpts from my permanent Library to help formulate your response. If it's not relevant, ignore it.\n\n[LIBRARY EXCERPTS]:\n{context}\n\n[MY PROMPT]: {internal_prompt}"
+                except Exception as e:
+                    logging.warning(f"Vector search failed: {e}")
 
             prompt_parts = [internal_prompt]
             file_tag = ""
@@ -141,7 +186,7 @@ class ApexEngine:
                 if 'application/pdf' in header.lower():
                     pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_data))
                     if len(pdf_reader.pages) > 10:
-                        yield "[SYS_ERROR] Document rejected. To protect server stability, APEX only processes PDFs that are 10 pages or fewer."
+                        yield "[SYS_ERROR] Document rejected. Limit is 10 pages."
                         return
                     pdf_text = "".join([page.extract_text() + "\n" for page in pdf_reader.pages])
                     prompt_parts[0] = f"{internal_prompt}\n\n[USER UPLOADED PDF CONTENT]:\n{pdf_text}"
@@ -159,7 +204,7 @@ class ApexEngine:
                         yield "[SYS_ERROR] The uploaded image file is corrupted or unsupported."
                         return
                 else:
-                    yield "[SYS_ERROR] File type rejected. APEX currently only accepts Images and PDFs."
+                    yield "[SYS_ERROR] File type rejected."
                     return
                 
         except Exception as e:
@@ -168,7 +213,6 @@ class ApexEngine:
 
         save_prompt = prompt + file_tag
 
-        # SEARCH INTERCEPTOR
         if prompt.lower().startswith("/search "):
             search_query = prompt[8:].strip()
             try:
@@ -195,20 +239,17 @@ class ApexEngine:
                     except Exception:
                         pass
                         
-                apex_database.save_chat('user', save_prompt)
-                apex_database.save_chat('assistant', full_reply)
-                self.session_memory.extend([{'role': 'user', 'content': save_prompt}, {'role': 'assistant', 'content': full_reply}])
+                apex_database.save_chat(user_id, 'user', save_prompt)
+                apex_database.save_chat(user_id, 'assistant', full_reply)
                 return
             except Exception as e: 
                 yield f"[SYS_ERROR] Web connection failed: {str(e)}"
                 return
 
-        apex_database.save_chat('user', save_prompt)
-        self.session_memory.append({'role': 'user', 'content': save_prompt})
+        apex_database.save_chat(user_id, 'user', save_prompt)
         gemini_history.append({"role": "user", "parts": prompt_parts})
         
         try:
-            # The core streaming engine
             response = model.generate_content(gemini_history, stream=True)
             full_reply = ""
             for chunk in response:
@@ -220,7 +261,6 @@ class ApexEngine:
                 except Exception:
                     pass
             
-            apex_database.save_chat('assistant', full_reply)
-            self.session_memory.append({'role': 'assistant', 'content': full_reply})
+            apex_database.save_chat(user_id, 'assistant', full_reply)
         except Exception as e:
             yield f"[SYS_ERROR] Backend failure: {str(e)}"
