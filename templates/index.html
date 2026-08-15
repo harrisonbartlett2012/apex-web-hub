@@ -3,18 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>APEX // Cloud Gateway</title>
+    <title>APEX // Cloud Gateway V3</title>
     
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.2/dist/full.min.css" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
-    
-    <!-- KaTeX for Math -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-    
-    <!-- Marked.js for Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
     <style>
@@ -23,7 +19,7 @@
         .markdown-content ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }
         .markdown-content pre { background-color: rgba(0,0,0,0.3); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 0.75rem; }
         .markdown-content code { background-color: rgba(0,0,0,0.2); padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-family: monospace; }
-        .markdown-content h1, .markdown-content h2, .markdown-content h3 { font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; }
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 { font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; color: oklch(var(--p)); }
     </style>
 </head>
 <body class="bg-base-300 h-[100dvh] flex flex-col p-4 md:p-8 font-mono relative overflow-hidden transition-colors duration-300">
@@ -45,7 +41,6 @@
                 <option value="Tutor">Socratic Tutor</option>
             </select>
             
-            <!-- Quality of Life & V2 Buttons -->
             <button onclick="toggleTheme()" class="btn btn-xs btn-outline btn-warning ml-2" id="theme-toggle" title="Toggle Theme">☀️</button>
             <button onclick="document.getElementById('library-upload').click()" class="btn btn-xs btn-outline btn-accent ml-2" title="Upload to Permanent Library">📚 LIBRARY</button>
             <input type="file" id="library-upload" accept=".pdf" class="hidden" onchange="uploadToLibrary()" />
@@ -56,14 +51,15 @@
 
     <!-- CHAT WINDOW -->
     <main id="chat-window" class="flex-1 bg-base-100 rounded-box p-4 overflow-y-auto mb-4 space-y-4 shadow-xl scroll-smooth">
-        <!-- Render History from Flask Database -->
         {% for msg in history %}
         <div class="chat {{ 'chat-end' if msg.role == 'user' else 'chat-start' }}">
             <div class="chat-header opacity-50 mb-1 flex justify-between w-full pr-8 relative">
                 <span>{{ 'You' if msg.role == 'user' else 'APEX' }}</span>
-                <!-- Inject copy button on old AI messages -->
                 {% if msg.role == 'assistant' %}
-                <button onclick="copyOldMessage(this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase absolute right-0">COPY</button>
+                <div class="absolute right-0 flex gap-2">
+                    <button onclick="exportToPDF(this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase">🖨️ PDF</button>
+                    <button onclick="copyOldMessage(this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase">COPY</button>
+                </div>
                 {% endif %}
             </div>
             <div class="chat-bubble {{ 'chat-bubble-neutral' if msg.role == 'user' else 'chat-bubble-primary' }} shadow-md markdown-content" style="overflow-x: auto;">
@@ -73,12 +69,14 @@
         {% endfor %}
     </main>
 
-    <!-- FOOTER INPUTS & OVERLAYS -->
+    <!-- FOOTER INPUTS -->
     <footer class="flex gap-2 items-center relative">
         <div class="absolute bottom-[100%] left-0 pb-2 w-full flex flex-col items-start gap-2 pointer-events-none z-50">
             <!-- Slash Command Menu -->
             <div id="slash-menu" class="hidden pointer-events-auto bg-base-200 border border-primary/30 rounded-box shadow-xl w-64 flex-col overflow-hidden transition-all ml-16">
                 <button onclick="useSlashCommand('/quiz ')" class="text-left px-4 py-2 hover:bg-primary/20 text-sm focus:outline-none"><span class="font-bold text-primary">/quiz</span> [topic]</button>
+                <button onclick="useSlashCommand('/flashcards ')" class="text-left px-4 py-2 hover:bg-primary/20 text-sm border-t border-base-300 focus:outline-none"><span class="font-bold text-success">/flashcards</span> [topic]</button>
+                <button onclick="useSlashCommand('/studyguide ')" class="text-left px-4 py-2 hover:bg-primary/20 text-sm border-t border-base-300 focus:outline-none"><span class="font-bold text-warning">/studyguide</span> [topic]</button>
                 <button onclick="useSlashCommand('/search ')" class="text-left px-4 py-2 hover:bg-primary/20 text-sm border-t border-base-300 focus:outline-none"><span class="font-bold text-info">/search</span> [query]</button>
             </div>
             <!-- Attachment Preview -->
@@ -90,8 +88,8 @@
 
         <input type="file" id="file-upload" accept="image/*,.pdf" class="hidden" onchange="previewFile()" />
         <button onclick="document.getElementById('file-upload').click()" class="btn btn-square btn-outline btn-primary z-10" id="upload-btn">📎</button>
-
-        <input type="text" id="cmd-input" placeholder="Type '/' for commands, or prompt..." autocomplete="off" class="input input-bordered input-primary flex-1 focus:outline-none z-10" />
+        
+        <input type="text" id="cmd-input" placeholder="Paste YouTube link, type '/' for cmds..." autocomplete="off" class="input input-bordered input-primary flex-1 focus:outline-none z-10" />
         <button onclick="sendCommand()" class="btn btn-primary tracking-widest z-10">EXECUTE</button>
     </footer>
 
@@ -109,7 +107,6 @@
             const cmdInput = document.getElementById('cmd-input');
             const statusBadge = document.getElementById('status-badge');
             
-            // Socket Status
             socket.on('connect', () => {
                 statusBadge.innerText = "ONLINE";
                 statusBadge.classList.replace('badge-warning', 'badge-success');
@@ -120,10 +117,8 @@
                 statusBadge.classList.replace('badge-success', 'badge-error');
             });
             
-            // Render Math and Markdown on past database history
             if (window.renderMathInElement) {
                 document.querySelectorAll('.markdown-content').forEach(el => {
-                    // Only re-parse if it looks like unrendered markdown
                     if (el.innerHTML.includes('#') || el.innerHTML.includes('*')) {
                         el.innerHTML = marked.parse(el.innerText);
                     }
@@ -132,13 +127,11 @@
                 chatWindow.scrollTop = chatWindow.scrollHeight;
             }
 
-            // Slash menu logic
             cmdInput.addEventListener('input', (e) => {
                 const menu = document.getElementById('slash-menu');
                 e.target.value.startsWith('/') ? menu.classList.remove('hidden') : menu.classList.add('hidden');
             });
 
-            // Status alerts
             socket.on('library_status', (data) => {
                 const sysMsg = document.createElement('div');
                 sysMsg.className = "text-center text-xs opacity-50 my-2 text-accent font-bold";
@@ -148,31 +141,31 @@
             });
 
             socket.on('ai_response', (data) => {
-                // Handling standard single-fire errors from the server
                 const msgId = 'inst-' + Date.now();
                 activeStreams[msgId] = { rawText: data.text };
-                
                 const msgDiv = document.createElement('div');
                 msgDiv.className = `chat chat-start`;
                 msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1 flex justify-between w-full pr-8 relative">
                     <span>${data.sender}</span>
-                    <button onclick="copyToClipboard('${msgId}', this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase absolute right-0">COPY</button>
+                    <div class="absolute right-0 flex gap-2">
+                        <button onclick="exportToPDF(this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase">🖨️ PDF</button>
+                        <button onclick="copyToClipboard('${msgId}', this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase">COPY</button>
+                    </div>
                 </div>
                 <div class="chat-bubble chat-bubble-primary shadow-md markdown-content" style="overflow-x: auto;">${marked.parse(data.text)}</div>`;
                 chatWindow.appendChild(msgDiv);
                 chatWindow.scrollTop = chatWindow.scrollHeight;
             });
 
-            // Streaming Logic
             socket.on('ai_response_start', (data) => {
                 activeStreams[data.msg_id] = { rawText: "" };
                 const msgDiv = document.createElement('div');
                 msgDiv.className = `chat chat-start`;
                 msgDiv.id = `msg-${data.msg_id}`;
-                
                 msgDiv.innerHTML = `<div class="chat-header opacity-50 mb-1 flex justify-between w-full pr-8 relative">
                     <span>${data.sender}</span>
                     <div class="absolute right-0 flex gap-2">
+                        <button onclick="exportToPDF(this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase">🖨️ PDF</button>
                         <button onclick="regenerateLast()" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase">REGENERATE</button>
                         <button onclick="copyToClipboard('${data.msg_id}', this)" class="btn btn-xs btn-ghost p-1 h-auto min-h-0 text-[10px] opacity-50 hover:opacity-100 uppercase">COPY</button>
                     </div>
@@ -196,7 +189,6 @@
                 }
             });
 
-            // User Sending Logic
             window.sendCommand = function() {
                 const text = cmdInput.value.trim();
                 if (!text && !window.currentFileData) return;
@@ -204,7 +196,6 @@
                 let displayMsg = text || "[File Uploaded]";
                 if (window.currentFileData && text) displayMsg += " [📎 File Attached]";
                 
-                // Save state for edit/regenerate
                 lastSentCommand = text;
                 lastSentFile = window.currentFileData;
                 
@@ -218,22 +209,30 @@
                 chatWindow.appendChild(msgDiv);
                 chatWindow.scrollTop = chatWindow.scrollHeight;
                 
-                socket.emit('user_message', { 
-                    command: text, 
-                    file_data: window.currentFileData,
-                    persona: document.getElementById('persona-select').value
-                });
-                
-                cmdInput.value = ''; clearAttachment();
-                document.getElementById('slash-menu').classList.add('hidden');
+                socket.emit('user_message', { command: text, file_data: window.currentFileData, persona: document.getElementById('persona-select').value });
+                cmdInput.value = ''; clearAttachment(); document.getElementById('slash-menu').classList.add('hidden');
             }
 
-            cmdInput.addEventListener("keypress", (e) => {
-                if (e.key === "Enter") { e.preventDefault(); sendCommand(); }
-            });
+            cmdInput.addEventListener("keypress", (e) => { if (e.key === "Enter") { e.preventDefault(); sendCommand(); } });
         });
 
-        // --- UI QUALITY OF LIFE FUNCTIONS ---
+        window.exportToPDF = function(btnElement) {
+            const bubble = btnElement.parentElement.parentElement.nextElementSibling;
+            const content = bubble.innerHTML;
+            const printWindow = window.open('', '', 'height=800,width=800');
+            printWindow.document.write('<html><head><title>APEX Document Export</title>');
+            printWindow.document.write('<link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.2/dist/full.min.css" rel="stylesheet" />');
+            printWindow.document.write('<script src="https://cdn.tailwindcss.com"><\/script>');
+            printWindow.document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">');
+            printWindow.document.write('<style>body { padding: 40px; font-family: monospace; } h1, h2, h3 { color: #000 !important; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 20px;} .markdown-content pre { background: #f3f4f6; padding: 15px; color: #000; border-radius: 8px; border: 1px solid #e5e7eb; overflow-x: auto; margin-bottom: 15px;} .markdown-content code { background-color: #f3f4f6; padding: 2px 4px; border-radius: 4px; color: #eb4d4b; } @media print { body { padding: 0; } }</style>');
+            printWindow.document.write('</head><body class="markdown-content bg-white text-black">');
+            printWindow.document.write('<h1 class="text-3xl font-bold mb-6">APEX // Document Export</h1>');
+            printWindow.document.write(content);
+            printWindow.document.write('</body></html>');
+            printWindow.document.close();
+            setTimeout(() => { printWindow.print(); printWindow.close(); }, 1500);
+        }
+
         function toggleTheme() {
             const html = document.documentElement;
             const toggleBtn = document.getElementById('theme-toggle');
@@ -261,8 +260,7 @@
         }
 
         window.copyOldMessage = function(btnElement) {
-            // For messages rendered from the database on page load
-            const bubble = btnElement.parentElement.nextElementSibling;
+            const bubble = btnElement.parentElement.parentElement.nextElementSibling;
             navigator.clipboard.writeText(bubble.innerText);
             const originalText = btnElement.innerText;
             btnElement.innerText = "COPIED!";
@@ -280,22 +278,15 @@
             sysMsg.className = "text-center text-xs opacity-50 my-2 text-info";
             sysMsg.innerText = "[ REGENERATING PREVIOUS RESPONSE... ]";
             document.getElementById('chat-window').appendChild(sysMsg);
-            
-            socket.emit('user_message', { 
-                command: lastSentCommand, 
-                file_data: lastSentFile,
-                persona: document.getElementById('persona-select').value
-            });
+            socket.emit('user_message', { command: lastSentCommand, file_data: lastSentFile, persona: document.getElementById('persona-select').value });
         }
 
         function clearSession() {
             socket.emit('clear_session');
             document.getElementById('chat-window').innerHTML = '<div class="text-center text-xs opacity-50 my-4 text-warning">[ BOARD WIPED. MEMORY CLEARED. ]</div>';
-            lastSentCommand = "";
-            lastSentFile = null;
+            lastSentCommand = ""; lastSentFile = null;
         }
 
-        // --- FILE HANDLING ---
         function previewFile() {
             const file = document.getElementById('file-upload').files[0];
             if (!file) return;
@@ -314,7 +305,6 @@
             const file = document.getElementById('library-upload').files[0];
             if (!file || !file.type.includes('pdf')) return alert("Only PDFs are supported in the permanent library.");
             if (file.size > 15 * 1024 * 1024) return alert("Library PDFs must be under 15MB.");
-            
             const reader = new FileReader();
             reader.onload = e => {
                 const sysMsg = document.createElement('div');
