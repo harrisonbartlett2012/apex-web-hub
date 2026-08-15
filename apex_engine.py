@@ -104,8 +104,11 @@ class ApexEngine:
     # --- YOUTUBE LOGIC ---
     def extract_youtube_transcript(self, url):
         try:
-            if "youtu.be" in url:
-                video_id = url.split("/")[-1].split("?")[0]
+            # Handle all 3 types of YouTube links (Standard, Mobile, and Shorts)
+            if "youtu.be/" in url:
+                video_id = url.split("youtu.be/")[-1].split("?")[0]
+            elif "shorts/" in url:
+                video_id = url.split("shorts/")[-1].split("?")[0]
             else:
                 video_id = parse_qs(urlparse(url).query).get('v', [None])[0]
             
@@ -146,7 +149,8 @@ class ApexEngine:
         file_tag = ""
         
         # 1. YOUTUBE INTERCEPTOR
-        yt_match = re.search(r'(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/)[^\s]+', prompt)
+        # Updated regex to catch Shorts and standard links properly
+        yt_match = re.search(r'(https?://)?(www\.)?(youtube\.com/(watch\?v=|shorts/)|youtu\.be/)[^\s]+', prompt)
         if yt_match:
             yt_url = yt_match.group(0)
             yield f"[📡 YouTube Video Detected. Ripping Transcript... ]\n\n"
